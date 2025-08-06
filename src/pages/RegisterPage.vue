@@ -1,52 +1,52 @@
 <template>
-  <q-page class="q-pa-md">
-    <div class="row justify-between items-center q-mb-lg">
-      <div class="text-h6 text-primary">Aplikacija za iznajmljivanje opreme</div>
-      <q-btn flat label="Odjava" color="accent" @click="logout" />
-    </div>
-
-    <div class="column items-center q-gutter-md">
-      <q-btn
-        round
-        unelevated
-        color="primary"
-        size="xl"
-        icon="person"
-        label="Admin"
-        @click="goToAdmin"
-      />
-      <q-btn
-        round
-        unelevated
-        color="accent"
-        size="xl"
-        icon="sports_handball"
-        label="Korisnik"
-        @click="goToUser"
-      />
-    </div>
+  <q-page class="flex flex-center">
+    <q-form @submit.prevent="register" class="column q-gutter-md">
+      <div class="text-h6">Aplikacija za iznajmljivanje opreme</div>
+      <q-input filled v-model="form.ime" label="Ime" />
+      <q-input filled v-model="form.prezime" label="Prezime" />
+      <q-input filled v-model="form.telefon" label="Broj telefona" />
+      <q-input filled v-model="form.email" label="Email" />
+      <q-btn type="submit" color="orange" label="Register" />
+    </q-form>
   </q-page>
 </template>
 
-<script setup>
-import { useRouter } from 'vue-router'
-const router = useRouter()
+<script>
+import { api } from 'boot/axios'
 
-function logout() {
-  router.push('/')
-}
-
-function goToAdmin() {
-  router.push('/admin')
-}
-
-function goToUser() {
-  router.push('/artikli')
+export default {
+  data() {
+    return {
+      form: {
+        ime: '',
+        prezime: '',
+        telefon: '',
+        email: '',
+      },
+    }
+  },
+  methods: {
+    async register() {
+      //try {
+      const response = await api.post(
+        '/korisnici',
+        {
+          ime_korisnika: this.form.ime,
+          prezime_korisnika: this.form.prezime,
+          broj_telefona_korisnika: this.form.telefon,
+          email_korisnika: this.form.email,
+        },
+        { withCredentials: true },
+      )
+      if (response.data.success) {
+        this.$router.push('/korisnici')
+      } else {
+        this.$q.notify({ color: 'negative', message: 'Krivi podaci' })
+      }
+      /*} catch (err) {
+        this.$q.notify({ color: 'negative', message: 'Greška prilikom registracije' })
+      }*/
+    },
+  },
 }
 </script>
-
-<style scoped>
-.text-primary {
-  color: #ff8f00;
-}
-</style>

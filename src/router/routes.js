@@ -3,11 +3,19 @@ const routes = [
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: '', component: () => import('pages/ItemsPage.vue') },
-      { path: '/login', component: () => import('pages/LoginPage.vue') },
-      { path: '/register', component: () => import('pages/RegisterPage.vue') },
+      { path: '', redirect: '/main' },
       { path: '/dashboard', component: () => import('pages/UserDashboardPage.vue') },
       { path: '/artikli', component: () => import('pages/ItemsPage.vue') },
+      { path: '/kosarica', component: () => import('pages/KošaricaPage.vue') },
+    ],
+  },
+  {
+    path: '/main',
+    component: () => import('layouts/IndexPageLayout.vue'),
+    children: [
+      { path: '/main', component: () => import('pages/IndexPage.vue') },
+      { path: '/main/login', component: () => import('pages/LoginPage.vue') },
+      { path: '/main/register', component: () => import('pages/RegisterPage.vue') },
     ],
   },
 

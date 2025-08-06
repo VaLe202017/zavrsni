@@ -1,51 +1,49 @@
 <template>
-  <q-page class="flex flex-center q-pa-md">
-    <q-card class="q-pa-lg" style="width: 400px; background-color: #fff8e1">
+  <q-page class="q-pa-md flex flex-center">
+    <q-card>
       <q-card-section>
-        <div class="text-h6 text-center text-primary">Login</div>
+        <div class="text-h6">Prijava korisnika</div>
+        <q-input v-model="email" label="Email" type="email" class="q-mb-sm" />
+        <q-input v-model="password" label="Lozinka" type="password" class="q-mb-sm" />
+        <q-btn label="Prijavi se" color="primary" @click="login" />
       </q-card-section>
-
-      <q-card-section>
-        <q-form @submit="onSubmit" class="q-gutter-md">
-          <q-input v-model="username" label="Username" filled dense />
-          <q-input v-model="password" label="Password" type="password" filled dense />
-          <q-btn type="submit" label="Prijava" color="primary" class="full-width" />
-        </q-form>
-      </q-card-section>
-
-      <q-card-actions class="justify-end">
-        <q-btn flat label="Zaboravljena lozinka?" color="accent" @click="onForgot" />
-      </q-card-actions>
     </q-card>
   </q-page>
 </template>
 
-<script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+<script>
+import axios from 'axios'
 
-const router = useRouter()
-const username = ref('')
-const password = ref('')
-
-function onSubmit() {
-  if (username.value && password.value) {
-    if (username.value === 'admin') {
-      router.push('/admin')
-    } else {
-      router.push('/dashboard')
+export default {
+  data() {
+    return {
+      email: '',
+      password: '',
     }
-  }
-}
-
-function onForgot() {
-  // ovdje možeš dodati logiku za zaboravljenu lozinku
-  alert('Funkcionalnost još nije implementirana.')
+  },
+  methods: {
+    async login() {
+      try {
+        const res = await axios.post(
+          'http://localhost:3000/api/login',
+          {
+            email: this.email,
+            password: this.password,
+          },
+          {
+            withCredentials: true,
+          },
+        )
+        if (res.data.success) {
+          localStorage.setItem('korisnik', JSON.stringify(res.data.korisnik))
+          this.$router.push('/dashboard')
+        } else {
+          this.$q.notify({ color: 'negative', message: 'Neispravan email' })
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    },
+  },
 }
 </script>
-
-<style scoped>
-.text-primary {
-  color: #ff8f00;
-}
-</style>

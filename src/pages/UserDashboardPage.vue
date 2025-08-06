@@ -1,52 +1,58 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="row justify-between items-center q-mb-lg">
-      <div class="text-h6 text-primary">Aplikacija za iznajmljivanje opreme</div>
-      <q-btn flat label="Odjava" color="accent" @click="logout" />
+    <div class="row items-center justify-between q-mb-md">
+      <div class="text-h5">Aplikacija za iznajmljivanje opreme</div>
+      <div>
+        <q-btn label="Košarica" color="orange" rounded />
+        <q-btn color="orange" label="Odjava" rounded @click="logout" />
+      </div>
     </div>
 
-    <div class="column items-center q-gutter-md">
-      <q-btn
-        round
-        unelevated
-        color="primary"
-        size="xl"
-        icon="person"
-        label="Admin"
-        @click="goToAdmin"
-      />
-      <q-btn
-        round
-        unelevated
-        color="accent"
-        size="xl"
-        icon="sports_handball"
-        label="Korisnik"
-        @click="goToUser"
-      />
+    <div class="row">
+      <div>
+        <div class="text-subtitle1 q-mb-sm">Stranice &nbsp;→</div>
+        <div class="row q-gutter-md">
+          <q-card
+            v-for="item in items"
+            :key="item.label"
+            class="q-pa-md"
+            style="width: 100px; height: 140px"
+            flat
+            bordered
+            @click="goToPage(item.route)"
+          >
+            <div class="column items-center">
+              <q-avatar size="60px" color="orange" class="q-mb-sm" />
+              <div class="text-center">{{ item.label }}</div>
+            </div>
+          </q-card>
+        </div>
+      </div>
     </div>
   </q-page>
 </template>
 
-<script setup>
-import { useRouter } from 'vue-router'
-const router = useRouter()
-
-function logout() {
-  router.push('/')
-}
-
-function goToAdmin() {
-  router.push('/admin')
-}
-
-function goToUser() {
-  router.push('/artikli')
+<script>
+import axios from 'axios'
+export default {
+  name: 'AfterLogin',
+  data() {
+    const logout = async () => {
+      await axios.post('http://localhost:3000/api/logout')
+      window.location.href = '/'
+    }
+    return {
+      items: [
+        { label: 'Artikli', route: '/artikli' },
+        { label: 'Košarica', route: '/kosarica' },
+      ],
+      logout,
+    }
+  },
+  methods: {
+    goToPage(route) {
+      this.$router.push(route)
+    },
+  },
 }
 </script>
-
-<style scoped>
-.text-primary {
-  color: #ff8f00;
-}
-</style>
