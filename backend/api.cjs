@@ -43,7 +43,8 @@ connection.getConnection((err, connection) => {
 })
 
 module.exports = connection
-
+/*******************************************************************/
+//provjera sesije
 app.get('/api/check', (req, res) => {
   if (req.session.korisnik) {
     res.json({ loggedIn: true, korisnik: req.session.user })
@@ -51,7 +52,8 @@ app.get('/api/check', (req, res) => {
     res.json({ loggedIn: false })
   }
 })
-
+/*******************************************************************/
+//api za login
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body
 
@@ -74,27 +76,8 @@ app.post('/api/login', (req, res) => {
     })
   })
 })
-
-//prikaz opreme
-app.get('/api/artikli', (req, res) => {
-  const sql = `SELECT
-      art.naziv_artikla,
-      art.dostupna_kolicina,
-      art.cijena_dan,
-      lok.sifra_lokacije,
-      lok.naziv_lokacije,
-      lok.adresa_lokacije
-    FROM artikli art
-    JOIN lokacije lok ON lok.sifra_lokacije = art.sifra_lokacije`
-  connection.query(sql, (err, results) => {
-    if (err) {
-      res.status(500).json({ error: err.message })
-      return
-    }
-    res.status(200).json(results)
-  })
-})
-
+/*******************************************************************/
+//pretraga artikala
 app.get('/api/artikliSearch', (req, res) => {
   const { query, searchByNaziv } = req.query
 
@@ -129,7 +112,8 @@ app.get('/api/artikliSearch', (req, res) => {
     res.status(200).json(results)
   })
 })
-
+/*******************************************************************/
+//unos narudzbe
 app.post('/api/narudzba', (req, res) => {
   if (!req.session.korisnik) {
     return res.status(401).json({ error: 'Niste prijavljeni' })
@@ -146,8 +130,6 @@ app.post('/api/narudzba', (req, res) => {
   if (!Array.isArray(stavke) || stavke.length === 0) {
     return res.status(400).json({ error: 'Košarica je prazna' })
   }
-
-  // 1. Ubacujemo narudžbu
   const sqlNarudzba =
     'INSERT INTO narudzbe (sifra_korisnika, datum_iznajmljivanja, datum_vracanja, ukupan_iznos, sifra_lokacije) VALUES (?, ?, ?, ?, ?)'
 
@@ -162,7 +144,6 @@ app.post('/api/narudzba', (req, res) => {
 
       const narudzbaId = result.insertId
 
-      // 2. Ubacujemo plaćanje
       const sqlPlacanje = 'INSERT INTO placanja (sifra_narudzbe, nacin_placanja) VALUES (?, ?)'
 
       connection.query(sqlPlacanje, [narudzbaId, nacinPlacanja], (err2) => {
@@ -175,7 +156,8 @@ app.post('/api/narudzba', (req, res) => {
     },
   )
 })
-
+/*******************************************************************/
+//logout zatvaranje sesije
 app.post('/api/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) return res.status(500).json({ message: 'Greška pri odjavi' })
@@ -183,84 +165,54 @@ app.post('/api/logout', (req, res) => {
     res.json({ message: 'Odjava uspješna' })
   })
 })
-
-/*
-app.post('/api/narudzba', (req, res) => {
-  const {
-    sifra_korisnika,
-    sifra_lokacije,
-    datum_iznajmljivanja,
-    datum_vracanja,
-    ukupan_iznos,
-    artikli,
-    nacin_placanja,
-  } = req.body
-
-  const sqlNarudzba = `
-    INSERT INTO narudzbe (sifra_korisnika, datum_iznajmljivanja, datum_vracanja, ukupan_iznos, sifra_lokacije)
-    VALUES (?, ?, ?, ?, ?)
-  `
-
-  connection.query(
-    sqlNarudzba,
-    [sifra_korisnika, datum_iznajmljivanja, datum_vracanja, ukupan_iznos, sifra_lokacije],
-    (err, result) => {
-      if (err) {
-        console.error('Greška prilikom spremanja narudžbe:', err)
-        return res.status(500).json({ error: 'Greška prilikom spremanja narudžbe' })
-      }
-
-      const narudzbaId = result.insertId
-
-      // Spremi stavke narudžbe
-      const stavkeSql = `
-        INSERT INTO stavke_narudzbe (sifra_narudzbe, sifra_artikla)
-        VALUES ?
-      `
-      const stavkeData = artikli.map((id) => [narudzbaId, id])
-
-      connection.query(stavkeSql, [stavkeData], (err2) => {
-        if (err2) {
-          console.error('Greška pri unosu stavki narudžbe:', err2)
-          return res.status(500).json({ error: 'Greška pri unosu stavki narudžbe' })
-        }
-
-        // Spremi način plaćanja
-        const placanjeSql = `
-          INSERT INTO placanja (sifra_narudzbe, nacin_placanja, status_placanja)
-          VALUES (?, ?, 1)
-        `
-
-        connection.query(placanjeSql, [narudzbaId, nacin_placanja], (err3) => {
-          if (err3) {
-            console.error('Greška pri unosu plaćanja:', err3)
-            return res.status(500).json({ error: 'Greška pri unosu plaćanja' })
-          }
-
-          res.status(200).json({ message: 'Narudžba spremljena' })
-        })
-      })
-    },
-  )
-})
-
-//registracija
-app.post('/api/korisnici', (req, res) => {
-  const {
-    sifra_korisnika,
-    ime_korisnika,
-    prezime_korisnika,
-    broj_telefona_korisnika,
-    email_korisnika,
-  } = req.body
+/*******************************************************************/
+//registracija korisnika
+app.post('/api/register', (req, res) => {
+  const { ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password } =
+    req.body
   const sql =
-    'INSERT INTO korisnici (sifra_korisnika, ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO korisnik (ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password) VALUES (?, ?, ?, ?, ?)'
   const values = [
-    sifra_korisnika,
     ime_korisnika,
     prezime_korisnika,
     broj_telefona_korisnika,
     email_korisnika,
+    password,
+  ]
+
+  connection.query(sql, values, (err, result) => {
+    if (err) {
+      res.status(500).json({ error: err.message })
+      return
+    }
+    req.session.korisnik = {
+      sifra_korisnika: result.insertId,
+      email_korisnika,
+    }
+    res.status(201).json({
+      success: true,
+      id: result.insertId,
+      ime_korisnika,
+      prezime_korisnika,
+      broj_telefona_korisnika,
+      email_korisnika,
+      password,
+    })
+  })
+})
+/*******************************************************************/
+//dodavanje korisnika
+app.post('/api/korisnik', (req, res) => {
+  const { ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password } =
+    req.body
+  const sql =
+    'INSERT INTO korisnik (ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password) VALUES (?, ?, ?, ?, ?)'
+  const values = [
+    ime_korisnika,
+    prezime_korisnika,
+    broj_telefona_korisnika,
+    email_korisnika,
+    password,
   ]
 
   connection.query(sql, values, (err, result) => {
@@ -269,31 +221,235 @@ app.post('/api/korisnici', (req, res) => {
       return
     }
     res.status(201).json({
+      success: true,
       id: result.insertId,
-      sifra_korisnika,
       ime_korisnika,
       prezime_korisnika,
       broj_telefona_korisnika,
       email_korisnika,
+      password,
     })
   })
 })
+/*******************************************************************/
+//dohvacanje svih korisnika
+app.get('/api/svi-korisnici', (req, res) => {
+  const sql = 'SELECT * FROM korisnik'
+  connection.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: 'Greška kod dohvaćanja korisnika' })
+    res.status(200).json(results)
+  })
+})
+/*******************************************************************/
+//azuriranje korisnika
+app.put('/api/korisnik/:id', (req, res) => {
+  const { id } = req.params
+  const { ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password } =
+    req.body
 
-//dodavanje terena
-app.post('/api/tereniAdd', isAuthenticated, (req, res) => {
-  const { Naziv, Lokacija, Radno_vrijeme } = req.body
-  const sql = 'INSERT INTO Tereni (Naziv, Lokacija, Radno_vrijeme) VALUES (?, ?, ?)'
-  const values = [Naziv, Lokacija, Radno_vrijeme]
+  const sql = `
+    UPDATE korisnik
+    SET ime_korisnika = ?, prezime_korisnika = ?, broj_telefona_korisnika = ?, email_korisnika = ?, password = ?
+    WHERE sifra_korisnika = ?
+  `
 
-  connection.query(sql, values, (err) => {
+  connection.query(
+    sql,
+    [ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password, id],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Greška kod ažuriranja korisnika' })
+      res.status(200).json({ message: 'Korisnik ažuriran' })
+    },
+  )
+})
+/*******************************************************************/
+//brisanje korisnika
+app.delete('/api/korisnik/:id', (req, res) => {
+  const { id } = req.params
+  const sql = 'DELETE FROM korisnik WHERE sifra_korisnika = ?'
+  connection.query(sql, [id], (err) => {
+    if (err) return res.status(500).json({ error: 'Greška kod brisanja korisnika' })
+    res.status(200).json({ message: 'Korisnik obrisan' })
+  })
+})
+/*******************************************************************/
+//dodavanje artikla
+app.post('/api/artikl', (req, res) => {
+  const { naziv_artikla, dostupna_kolicina, cijena_dan, sifra_tipa_artikla, sifra_lokacije } =
+    req.body
+  const sql =
+    'INSERT INTO artikli (naziv_artikla, dostupna_kolicina, cijena_dan, sifra_tipa_artikla, sifra_lokacije) VALUES (?, ?, ?, ?, ?)'
+  const values = [naziv_artikla, dostupna_kolicina, cijena_dan, sifra_tipa_artikla, sifra_lokacije]
+
+  connection.query(sql, values, (err, result) => {
     if (err) {
       res.status(500).json({ error: err.message })
       return
     }
-    res.status(200).json({ message: 'Tereni updated successfully' })
+    res.status(201).json({
+      success: true,
+      id: result.insertId,
+      naziv_artikla,
+      dostupna_kolicina,
+      cijena_dan,
+      sifra_tipa_artikla,
+      sifra_lokacije,
+    })
   })
 })
+/*******************************************************************/
+//složeni upit za sve artikle
+app.get('/api/svi-artikli', (req, res) => {
+  const sql = `SELECT
+      art.sifra_artikla,
+      art.naziv_artikla,
+      art.dostupna_kolicina,
+      art.cijena_dan,
+      lok.sifra_lokacije,
+      lok.naziv_lokacije,
+      lok.adresa_lokacije,
+      tip.sifra_tipa_artikla,
+      tip.tip_artikla
+    FROM artikli art
+    JOIN lokacije lok ON lok.sifra_lokacije = art.sifra_lokacije
+    JOIN tip_artikla tip ON tip.sifra_tipa_artikla=art.sifra_tipa_artikla`
+  connection.query(sql, (err, results) => {
+    if (err) {
+      res.status(500).json({ error: err.message })
+      return
+    }
+    res.status(200).json(results)
+  })
+})
+/*******************************************************************/
+//azuriranje artika
+app.put('/api/artikl/:id', (req, res) => {
+  const { id } = req.params
+  const { naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla } =
+    req.body
 
+  const sql = `
+    UPDATE artikli
+    SET naziv_artikla = ?, dostupna_kolicina = ?, cijena_dan = ?, sifra_lokacije = ?, sifra_tipa_artikla = ?
+    WHERE sifra_artikla = ?
+  `
+
+  connection.query(
+    sql,
+    [naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla, id],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Greška kod ažuriranja artikla' })
+      res.status(200).json({ message: 'Artikl ažuriran' })
+    },
+  )
+})
+/*******************************************************************/
+//brisanje artikla
+app.delete('/api/artikl/:id', (req, res) => {
+  const { id } = req.params
+  const sql = 'DELETE FROM artikli WHERE sifra_artikla = ?'
+  connection.query(sql, [id], (err) => {
+    if (err) return res.status(500).json({ error: 'Greška kod brisanja artikla' })
+    res.status(200).json({ message: 'Artikl obrisan' })
+  })
+})
+/*******************************************************************/
+//azuriranje artika
+app.put('/api/artikl/:id', (req, res) => {
+  const { id } = req.params
+  const { naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla } =
+    req.body
+
+  const sql = `
+    UPDATE artikli
+    SET naziv_artikla = ?, dostupna_kolicina = ?, cijena_dan = ?, sifra_lokacije = ?, sifra_tipa_artikla = ?
+    WHERE sifra_artikla = ?
+  `
+
+  connection.query(
+    sql,
+    [naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla, id],
+    (err) => {
+      if (err) return res.status(500).json({ error: 'Greška kod ažuriranja artikla' })
+      res.status(200).json({ message: 'Artikl ažuriran' })
+    },
+  )
+})
+/*******************************************************************/
+//brisanje artikla
+app.delete('/api/artikl/:id', (req, res) => {
+  const { id } = req.params
+  const sql = 'DELETE FROM artikli WHERE sifra_artikla = ?'
+  connection.query(sql, [id], (err) => {
+    if (err) return res.status(500).json({ error: 'Greška kod brisanja artikla' })
+    res.status(200).json({ message: 'Artikl obrisan' })
+  })
+})
+/*******************************************************************/
+//dohvat tipova artikla
+app.get('/api/tipovi-artikla', (req, res) => {
+  const sql = 'SELECT sifra_tipa_artikla, tip_artikla FROM tip_artikla'
+  connection.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: 'Greška kod dohvaćanja tipova artikla' })
+    res.json(results)
+  })
+})
+/*******************************************************************/
+//dodavanje tipa artikla
+app.post('/api/tip-artikla', (req, res) => {
+  const { tip_artikla } = req.body
+  const sql = 'INSERT INTO tip_artikla (tip_artikla) VALUES (?)'
+  const values = [tip_artikla]
+
+  connection.query(sql, values, (err, result) => {
+    if (err) {
+      res.status(500).json({ error: err.message })
+      return
+    }
+    res.status(201).json({
+      success: true,
+      id: result.insertId,
+      tip_artikla,
+    })
+  })
+})
+/*******************************************************************/
+//azuriranje tipa artika
+app.put('/api/tip-artikla/:id', (req, res) => {
+  const { id } = req.params
+  const { tip_artikla } = req.body
+
+  const sql = `
+    UPDATE tip_artikla
+    SET tip_artikla=?
+    WHERE sifra_tipa_artikla = ?
+  `
+
+  connection.query(sql, [tip_artikla, id], (err) => {
+    if (err) return res.status(500).json({ error: 'Greška kod ažuriranja tipa artikla' })
+    res.status(200).json({ message: 'Tip artikla ažuriran' })
+  })
+})
+/*******************************************************************/
+//brisanje artikla
+app.delete('/api/tip-artikla/:id', (req, res) => {
+  const { id } = req.params
+  const sql = 'DELETE FROM tip_artikla WHERE sifra_tipa_artikla = ?'
+  connection.query(sql, [id], (err) => {
+    if (err) return res.status(500).json({ error: 'Greška kod brisanja tipa artikla' })
+    res.status(200).json({ message: 'Tip artikla obrisan' })
+  })
+})
+/*******************************************************************/
+//dohvat lokacije
+app.get('/api/lokacije', (req, res) => {
+  const sql = 'SELECT sifra_lokacije, naziv_lokacije, adresa_lokacije FROM lokacije'
+  connection.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: 'Greška kod dohvaćanja lokacija' })
+    res.json(results)
+  })
+})
+/*******************************************************************/
 //admin login
 app.post('/api/admin', (req, res) => {
   const { username, password } = req.body
@@ -315,46 +471,8 @@ app.post('/api/admin', (req, res) => {
     }
   })
 })
-
-app.get('/api/auth/check', (req, res) => {
-  if (req.session && req.session.user) {
-    res.json({ authenticated: true })
-  } else {
-    res.json({ authenticated: false })
-  }
-})
-
-//pregled_rezervacija
-app.get('/api/rezervacije', (req, res) => {
-  const query = `
-    SELECT
-  r.sifra_narudzbe,
-  r.datum_iznajmljivanja,
-  k.ime_korisnika,
-  k.prezime_korisnika,
-  t.naziv AS naziv_terena
-FROM rezervacije r
-JOIN korisnik k ON r.sifra_korisnika = k.sifra_korisnika
-JOIN Tereni t ON r.sifra_terena = t.sifra_terena
-ORDER BY r.datum_iznajmljivanja DESC
-  `
-
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error('Greška prilikom dohvaćanja rezervacija:', err)
-      return res.status(500).json({ message: 'Greška na serveru' })
-    }
-    res.json(results)
-  })
-})
-
-/*
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
-*/
+/*******************************************************************/
 module.exports = app
-
 if (require.main === module) {
   const port = process.env.PORT || 3000
   app.listen(port, () => {

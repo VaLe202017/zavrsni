@@ -67,7 +67,7 @@ export default {
 
     const loadAllArtikli = async () => {
       try {
-        const res = await axios.get('http://localhost:3000/api/artikli')
+        const res = await axios.get('http://localhost:3000/api/svi-artikli')
         artikli.value = res.data
         filteredArtikli.value = res.data
       } catch (err) {
