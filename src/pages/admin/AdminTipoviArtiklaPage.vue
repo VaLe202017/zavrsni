@@ -5,7 +5,7 @@
     <q-tabs v-model="tab" dense align="left" class="text-orange q-mb-md">
       <q-tab name="add" label="Dodaj tip artikla" />
       <q-tab name="edit" label="Uredi tip artikla" />
-      <q-tab name="delete" label="Brisanje tip artikla" />
+      <q-tab name="delete" label="Brisanje tipa artikla" />
     </q-tabs>
 
     <!-- Dodavanje tipa artikla -->
@@ -21,11 +21,11 @@
 
     <!-- Uređivanje tipa artikla -->
     <div v-if="tab === 'edit'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na korisnika za uređivanje:</div>
+      <div class="q-mb-sm">Kliknite na tip artikla za uređivanje:</div>
       <q-list bordered separator>
         <q-item
           v-for="t in tipovi"
-          :key="t.sfira_tipa_artikla"
+          :key="t.sifra_tipa_artikla"
           clickable
           @click="postaviZaUredi(t)"
         >
@@ -33,20 +33,20 @@
         </q-item>
       </q-list>
 
-      <div v-if="urediForm.sfira_tipa_artikla" class="q-mt-md q-gutter-md">
-        <q-input filled v-model="urediForm.sfira_tipa_artikla" label="ID" disable />
-        <q-input filled v-model="urediForm.tip_artikla" label="Ime" />
+      <div v-if="urediForm.sifra_tipa_artikla" class="q-mt-md q-gutter-md">
+        <q-input filled v-model="urediForm.sifra_tipa_artikla" label="ID" disable />
+        <q-input filled v-model="urediForm.tip_artikla" label="Tip artikla" />
         <q-btn label="Ažuriraj" color="secondary" @click="azurirajTip" />
       </div>
     </div>
 
     <!-- Brisanje tipa artikla -->
     <div v-if="tab === 'delete'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na korisnika za brisanje:</div>
+      <div class="q-mb-sm">Kliknite na tip artikla za brisanje:</div>
       <q-list bordered separator>
         <q-item
           v-for="t in tipovi"
-          :key="t.sfira_tipa_artikla"
+          :key="t.sifra_tipa_artikla"
           clickable
           @click="potvrdiBrisanje(t)"
         >
@@ -78,21 +78,20 @@ export default {
         const res = await axios.get('http://localhost:3000/api/tipovi-artikla')
         tipovi.value = res.data
       } catch (err) {
-        alert('Greška pri dohvaćanju tipa artikla')
+        alert('Greška pri dohvaćanju tipova artikla')
         console.error(err)
       }
     }
 
     const dodajTip = async () => {
       try {
-        const podaciZaSlanje = {
-          tip_artikla: form.value.tip_artikla,
-        }
-        await axios.post('http://localhost:3000/api/tip-artikla', podaciZaSlanje, {
-          withCredentials: true,
-        })
-
+        await axios.post(
+          'http://localhost:3000/api/tip-artikla',
+          { tip_artikla: form.value.tip_artikla },
+          { withCredentials: true },
+        )
         alert('Tip artikla dodan')
+        form.value.tip_artikla = ''
         await dohvatiTip()
       } catch (err) {
         alert('Greška pri dodavanju tipa artikla')
@@ -101,20 +100,15 @@ export default {
     }
 
     const postaviZaUredi = (tip) => {
-      urediForm.value = { ...tip }
+      urediForm.value = { ...tip } // sadrži sifra_tipa_artikla i tip_artikla
     }
 
     const azurirajTip = async () => {
       try {
-        const podaciZaSlanje = {
-          tip_artikla: urediForm.value.tip_artikla,
-        }
         await axios.put(
-          `http://localhost:3000/api/tip-artikla/${urediForm.value.sfira_tipa_artikla}`,
-          podaciZaSlanje,
-          {
-            withCredentials: true,
-          },
+          `http://localhost:3000/api/tip-artikla/${urediForm.value.sifra_tipa_artikla}`,
+          { tip_artikla: urediForm.value.tip_artikla },
+          { withCredentials: true },
         )
         alert('Tip artikla ažuriran')
         await dohvatiTip()
@@ -124,15 +118,14 @@ export default {
       }
     }
 
-    const potvrdiBrisanje = async (tipovi) => {
-      const potvrda = confirm(`Želite li obrisati tip artikla ${tipovi.tip_artikla}?`)
+    const potvrdiBrisanje = async (tip) => {
+      const potvrda = confirm(`Želite li obrisati tip artikla "${tip.tip_artikla}"?`)
       if (!potvrda) return
-
       try {
-        await axios.delete(`http://localhost:3000/api/tip-artikla/${tipovi.sfira_tipa_artikla}`, {
+        await axios.delete(`http://localhost:3000/api/tip-artikla/${tip.sifra_tipa_artikla}`, {
           withCredentials: true,
         })
-        alert('Korisnik obrisan')
+        alert('Tip artikla obrisan')
         await dohvatiTip()
       } catch (err) {
         alert('Greška pri brisanju tipa artikla')
@@ -140,9 +133,7 @@ export default {
       }
     }
 
-    onMounted(() => {
-      dohvatiTip()
-    })
+    onMounted(dohvatiTip)
 
     return {
       tab,

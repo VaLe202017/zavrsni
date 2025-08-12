@@ -32,7 +32,7 @@ export default {
     async register() {
       try {
         const response = await axios.post(
-          'http://localhost:3000/api/korisnik',
+          'http://localhost:3000/api/register',
           {
             ime_korisnika: this.form.ime,
             prezime_korisnika: this.form.prezime,

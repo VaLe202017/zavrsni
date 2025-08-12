@@ -443,10 +443,100 @@ app.delete('/api/tip-artikla/:id', (req, res) => {
 /*******************************************************************/
 //dohvat lokacije
 app.get('/api/lokacije', (req, res) => {
-  const sql = 'SELECT sifra_lokacije, naziv_lokacije, adresa_lokacije FROM lokacije'
+  const sql =
+    'SELECT sifra_lokacije, naziv_lokacije, adresa_lokacije FROM lokacije ORDER BY naziv_lokacije ASC'
   connection.query(sql, (err, results) => {
     if (err) return res.status(500).json({ error: 'Greška kod dohvaćanja lokacija' })
     res.json(results)
+  })
+})
+/*******************************************************************/
+//dohvat lokacija za admin
+app.get('/api/sve-lokacije', (req, res) => {
+  const sql =
+    'SELECT sifra_lokacije, naziv_lokacije, adresa_lokacije, grad, drzava FROM lokacije ORDER BY naziv_lokacije ASC'
+  connection.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: 'Greška kod dohvaćanja lokacija' })
+    res.json(results)
+  })
+})
+/*******************************************************************/
+//dodavanje lokacija
+app.post('/api/lokacija', (req, res) => {
+  const { naziv_lokacije, adresa_lokacije, grad, drzava } = req.body
+
+  if (!naziv_lokacije || !adresa_lokacije || !grad || !drzava) {
+    return res.status(400).json({ error: 'Sva polja su obavezna' })
+  }
+
+  const sql = `
+    INSERT INTO lokacije (naziv_lokacije, adresa_lokacije, grad, drzava)
+    VALUES (?, ?, ?, ?)
+  `
+  connection.query(sql, [naziv_lokacije, adresa_lokacije, grad, drzava], (err, result) => {
+    if (err) {
+      console.error('Greška kod dodavanja lokacije:', err)
+      return res.status(500).json({ error: 'Greška kod dodavanja lokacije' })
+    }
+    res.status(201).json({
+      success: true,
+      sifra_lokacije: result.insertId,
+      naziv_lokacije,
+      adresa_lokacije,
+      grad,
+      drzava,
+    })
+  })
+})
+/*******************************************************************/
+//ažuriranje lokacija
+app.put('/api/lokacija/:id', (req, res) => {
+  const { id } = req.params
+  const { naziv_lokacije, adresa_lokacije, grad, drzava } = req.body
+
+  if (!naziv_lokacije || !adresa_lokacije || !grad || !drzava) {
+    return res.status(400).json({ error: 'Sva polja su obavezna' })
+  }
+
+  const sql = `
+    UPDATE lokacije
+    SET naziv_lokacije = ?, adresa_lokacije = ?, grad = ?, drzava = ?
+    WHERE sifra_lokacije = ?
+  `
+  connection.query(sql, [naziv_lokacije, adresa_lokacije, grad, drzava, id], (err, result) => {
+    if (err) {
+      console.error('Greška kod ažuriranja lokacije:', err)
+      return res.status(500).json({ error: 'Greška kod ažuriranja lokacije' })
+    }
+    // result.affectedRows može biti 0 ako ne postoji ID
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Lokacija nije pronađena' })
+    }
+    res.status(200).json({ success: true, message: 'Lokacija ažurirana' })
+  })
+})
+/*******************************************************************/
+//brisanje lokacije
+app.delete('/api/lokacija/:id', (req, res) => {
+  const { id } = req.params
+  const sql = 'DELETE FROM lokacije WHERE sifra_lokacije = ?'
+
+  connection.query(sql, [id], (err, result) => {
+    if (err) {
+      // FK constraint (npr. postoje artikli koji referenciraju ovu lokaciju)
+      // MySQL/MariaDB error code: ER_ROW_IS_REFERENCED_2 (1451)
+      if (err.errno === 1451) {
+        return res.status(409).json({
+          error: 'Lokaciju nije moguće obrisati jer je povezana s artiklima ili drugim zapisima.',
+        })
+      }
+      console.error('Greška kod brisanja lokacije:', err)
+      return res.status(500).json({ error: 'Greška kod brisanja lokacije' })
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Lokacija nije pronađena' })
+    }
+    res.status(200).json({ success: true, message: 'Lokacija obrisana' })
   })
 })
 /*******************************************************************/

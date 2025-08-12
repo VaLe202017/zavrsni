@@ -1,90 +1,51 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">Administracija korisnika</div>
+    <div class="text-h5 q-mb-md">Administracija lokacija</div>
 
     <q-tabs v-model="tab" dense align="left" class="text-orange q-mb-md">
-      <q-tab name="add" label="Dodaj korisnika" />
-      <q-tab name="edit" label="Uredi korisnika" />
-      <q-tab name="delete" label="Brisanje korisnika" />
+      <q-tab name="add" label="Dodaj lokaciju" />
+      <q-tab name="edit" label="Uredi lokaciju" />
+      <q-tab name="delete" label="Brisanje lokacije" />
     </q-tabs>
 
-    <!-- Dodavanje korisnika -->
+    <!-- Dodavanje lokacije -->
     <div v-if="tab === 'add'" class="q-gutter-md">
-      <q-input
-        filled
-        v-model="form.ime"
-        label="Ime korisnika"
-        :rules="[(val) => !!val || 'Ime je obavezno']"
-      />
-      <q-input
-        filled
-        v-model="form.prezime"
-        label="Prezime korisnika"
-        :rules="[(val) => !!val || 'Prezime je obavezno']"
-      />
-      <q-input
-        filled
-        v-model="form.telefon"
-        label="Broj telefona korisnika"
-        :rules="[(val) => !!val || 'Broj telefona je obavezan']"
-      />
-      <q-input
-        filled
-        v-model="form.email"
-        label="Email korisnika"
-        :rules="[(val) => !!val || 'Email je obavezan']"
-      />
-      <q-input
-        filled
-        v-model="form.password"
-        label="Lozinka"
-        type="password"
-        :rules="[(val) => !!val || 'Password je obavezan']"
-      />
-      <q-btn label="Spremi" color="orange" @click="dodajKorisnika" />
+      <q-input filled v-model="form.naziv_lokacije" label="Naziv lokacije" />
+      <q-input filled v-model="form.adresa_lokacije" label="Adresa" />
+      <q-input filled v-model="form.grad" label="Grad" />
+      <q-input filled v-model="form.drzava" label="Država" />
+      <q-btn label="Spremi" color="orange" @click="dodajLokaciju" />
     </div>
 
-    <!-- Uređivanje korisnika -->
+    <!-- Uređivanje lokacije -->
     <div v-if="tab === 'edit'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na korisnika za uređivanje:</div>
+      <div class="q-mb-sm">Kliknite na lokaciju za uređivanje:</div>
       <q-list bordered separator>
-        <q-item
-          v-for="k in korisnici"
-          :key="k.sifra_korisnika"
-          clickable
-          @click="postaviZaUredi(k)"
-        >
-          <q-item-section
-            >{{ k.ime_korisnika }} {{ k.prezime_korisnika }} -
-            {{ k.email_korisnika }}</q-item-section
-          >
+        <q-item v-for="l in lokacije" :key="l.sifra_lokacije" clickable @click="postaviZaUredi(l)">
+          <q-item-section>
+            {{ l.naziv_lokacije }} ({{ l.adresa_lokacije }}, {{ l.grad }}, {{ l.drzava }})
+          </q-item-section>
         </q-item>
       </q-list>
 
-      <div v-if="urediForm.sifra_korisnika" class="q-mt-md q-gutter-md">
-        <q-input filled v-model="urediForm.sifra_korisnika" label="ID" disable />
-        <q-input filled v-model="urediForm.ime_korisnika" label="Ime" />
-        <q-input filled v-model="urediForm.prezime_korisnika" label="Prezime" />
-        <q-input filled v-model="urediForm.broj_telefona_korisnika" label="Broj telefona" />
-        <q-input filled v-model="urediForm.email_korisnika" label="Email" />
-        <q-btn label="Ažuriraj" color="secondary" @click="azurirajKorisnika" />
+      <div v-if="urediForm.sifra_lokacije" class="q-mt-md q-gutter-md">
+        <q-input filled v-model="urediForm.sifra_lokacije" label="ID" disable />
+        <q-input filled v-model="urediForm.naziv_lokacije" label="Naziv lokacije" />
+        <q-input filled v-model="urediForm.adresa_lokacije" label="Adresa" />
+        <q-input filled v-model="urediForm.grad" label="Grad" />
+        <q-input filled v-model="urediForm.drzava" label="Država" />
+        <q-btn label="Ažuriraj" color="secondary" @click="azurirajLokaciju" />
       </div>
     </div>
 
-    <!-- Brisanje korisnika -->
+    <!-- Brisanje lokacije -->
     <div v-if="tab === 'delete'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na korisnika za brisanje:</div>
+      <div class="q-mb-sm">Kliknite na lokaciju za brisanje:</div>
       <q-list bordered separator>
-        <q-item
-          v-for="k in korisnici"
-          :key="k.sifra_korisnika"
-          clickable
-          @click="potvrdiBrisanje(k)"
-        >
-          <q-item-section
-            >{{ k.ime_korisnika }} {{ k.prezime_korisnika }} -
-            {{ k.email_korisnika }}</q-item-section
-          >
+        <q-item v-for="l in lokacije" :key="l.sifra_lokacije" clickable @click="potvrdiBrisanje(l)">
+          <q-item-section>
+            {{ l.naziv_lokacije }} ({{ l.adresa_lokacije }}, {{ l.grad }}, {{ l.drzava }})
+          </q-item-section>
         </q-item>
       </q-list>
     </div>
@@ -96,104 +57,96 @@ import axios from 'axios'
 import { ref, onMounted } from 'vue'
 
 export default {
-  name: 'AdminKorisniciPage',
+  name: 'AdminLokacijePage',
   setup() {
     const tab = ref('add')
-    const korisnici = ref([])
+    const lokacije = ref([])
 
     const form = ref({
-      ime: '',
-      prezime: '',
-      telefon: '',
-      email: '',
-      password: '',
+      naziv_lokacije: '',
+      adresa_lokacije: '',
+      grad: '',
+      drzava: '',
     })
 
     const urediForm = ref({})
 
-    const dohvatiKorisnike = async () => {
+    const dohvatiLokacije = async () => {
       try {
-        const res = await axios.get('http://localhost:3000/api/svi-korisnici')
-        korisnici.value = res.data
+        const res = await axios.get('http://localhost:3000/api/sve-lokacije')
+        lokacije.value = res.data
       } catch (err) {
-        alert('Greška pri dohvaćanju korisnika')
+        alert('Greška pri dohvaćanju lokacija')
         console.error(err)
       }
     }
 
-    const dodajKorisnika = async () => {
+    const dodajLokaciju = async () => {
       try {
         await axios.post(
-          'http://localhost:3000/api/korisnik',
+          'http://localhost:3000/api/lokacija',
+          { ...form.value },
+          { withCredentials: true },
+        )
+        alert('Lokacija dodana')
+        // reset
+        form.value = { naziv_lokacije: '', adresa_lokacije: '', grad: '', drzava: '' }
+        await dohvatiLokacije()
+      } catch (err) {
+        alert('Greška pri dodavanju lokacije')
+        console.error(err)
+      }
+    }
+
+    const postaviZaUredi = (lok) => {
+      urediForm.value = { ...lok }
+    }
+
+    const azurirajLokaciju = async () => {
+      try {
+        await axios.put(
+          `http://localhost:3000/api/lokacija/${urediForm.value.sifra_lokacije}`,
           {
-            ime_korisnika: form.value.ime,
-            prezime_korisnika: form.value.prezime,
-            broj_telefona_korisnika: form.value.telefon,
-            email_korisnika: form.value.email,
-            password: form.value.password,
+            naziv_lokacije: urediForm.value.naziv_lokacije,
+            adresa_lokacije: urediForm.value.adresa_lokacije,
+            grad: urediForm.value.grad,
+            drzava: urediForm.value.drzava,
           },
           { withCredentials: true },
         )
-
-        alert('Korisnik dodan')
-        await dohvatiKorisnike()
+        alert('Lokacija ažurirana')
+        await dohvatiLokacije()
       } catch (err) {
-        alert('Greška pri dodavanju korisnika')
+        alert('Greška pri ažuriranju lokacije')
         console.error(err)
       }
     }
 
-    const postaviZaUredi = (korisnik) => {
-      urediForm.value = { ...korisnik }
-    }
-
-    const azurirajKorisnika = async () => {
+    const potvrdiBrisanje = async (lok) => {
+      if (!confirm(`Obrisati lokaciju "${lok.naziv_lokacije}"?`)) return
       try {
-        await axios.put(
-          `http://localhost:3000/api/korisnik/${urediForm.value.sifra_korisnika}`,
-          urediForm.value,
-          {
-            withCredentials: true,
-          },
-        )
-        alert('Korisnik ažuriran')
-        await dohvatiKorisnike()
-      } catch (err) {
-        alert('Greška pri ažuriranju korisnika')
-        console.error(err)
-      }
-    }
-
-    const potvrdiBrisanje = async (korisnik) => {
-      const potvrda = confirm(
-        `Želite li obrisati korisnika ${korisnik.ime_korisnika} ${korisnik.prezime_korisnika}?`,
-      )
-      if (!potvrda) return
-
-      try {
-        await axios.delete(`http://localhost:3000/api/korisnik/${korisnik.sifra_korisnika}`, {
+        await axios.delete(`http://localhost:3000/api/lokacija/${lok.sifra_lokacije}`, {
           withCredentials: true,
         })
-        alert('Korisnik obrisan')
-        await dohvatiKorisnike()
+        alert('Lokacija obrisana')
+        await dohvatiLokacije()
       } catch (err) {
-        alert('Greška pri brisanju korisnika')
+        alert('Greška pri brisanju lokacije — provjeri postoji li povezanost u artiklima.')
         console.error(err)
       }
     }
 
-    onMounted(() => {
-      dohvatiKorisnike()
-    })
+    onMounted(dohvatiLokacije)
 
     return {
       tab,
+      lokacije,
       form,
-      korisnici,
       urediForm,
-      dodajKorisnika,
+      dohvatiLokacije,
+      dodajLokaciju,
       postaviZaUredi,
-      azurirajKorisnika,
+      azurirajLokaciju,
       potvrdiBrisanje,
     }
   },
