@@ -1,56 +1,65 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-md">Administracija tipova artikala</div>
+    <div class="row items-center justify-between q-mb-md">
+      <div class="text-h5">Administracija tipova artikala</div>
+      <q-btn color="orange" outline icon="refresh" label="Osvježi" @click="ucitaj" />
+    </div>
 
     <q-tabs v-model="tab" dense align="left" class="text-orange q-mb-md">
-      <q-tab name="add" label="Dodaj tip artikla" />
-      <q-tab name="edit" label="Uredi tip artikla" />
-      <q-tab name="delete" label="Brisanje tipa artikla" />
+      <q-tab name="add" label="Dodaj tip" />
+      <q-tab name="edit" label="Uredi tip" />
+      <q-tab name="delete" label="Brisanje tipa" />
     </q-tabs>
 
-    <!-- Dodavanje tipa artikla -->
+    <!-- ====== DODAJ ====== -->
     <div v-if="tab === 'add'" class="q-gutter-md">
-      <q-input
-        filled
-        v-model="form.tip_artikla"
-        label="Tip artikla"
-        :rules="[(val) => !!val || 'Tip artikla je obavezan']"
+      <q-input filled v-model="novo.tip_artikla" label="Naziv tipa" />
+      <q-btn color="primary" icon="add" label="Dodaj" @click="dodaj" />
+    </div>
+
+    <!-- ====== UREDI ====== -->
+    <div v-if="tab === 'edit'">
+      <q-input dense outlined v-model="filter" label="Filtriraj (tip…)" class="q-mb-sm" clearable />
+      <q-table
+        title="Tipovi"
+        :rows="filtrirani"
+        :columns="columns"
+        row-key="sifra_tipa_artikla"
+        flat
+        bordered
+        dense
+        :pagination="{ rowsPerPage: 10 }"
+        @row-click="(_, row) => odaberi(row)"
       />
-      <q-btn label="Spremi" color="orange" @click="dodajTip" />
-    </div>
-
-    <!-- Uređivanje tipa artikla -->
-    <div v-if="tab === 'edit'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na tip artikla za uređivanje:</div>
-      <q-list bordered separator>
-        <q-item
-          v-for="t in tipovi"
-          :key="t.sifra_tipa_artikla"
-          clickable
-          @click="postaviZaUredi(t)"
-        >
-          <q-item-section>{{ t.tip_artikla }}</q-item-section>
-        </q-item>
-      </q-list>
-
-      <div v-if="urediForm.sifra_tipa_artikla" class="q-mt-md q-gutter-md">
-        <q-input filled v-model="urediForm.sifra_tipa_artikla" label="ID" disable />
-        <q-input filled v-model="urediForm.tip_artikla" label="Tip artikla" />
-        <q-btn label="Ažuriraj" color="secondary" @click="azurirajTip" />
+      <div v-if="uredi.sifra_tipa_artikla" class="q-gutter-md q-mt-md">
+        <div class="text-subtitle1">Uredi tip #{{ uredi.sifra_tipa_artikla }}</div>
+        <div class="row q-col-gutter-md">
+          <div class="col-12 col-md-2">
+            <q-input filled v-model="uredi.sifra_tipa_artikla" label="ID" readonly />
+          </div>
+          <div class="col-12 col-md-6">
+            <q-input filled v-model="uredi.tip_artikla" label="Naziv" />
+          </div>
+        </div>
+        <q-btn color="secondary" icon="save" label="Spremi promjene" @click="spremi" />
       </div>
+      <div v-else class="text-grey-7 q-mt-md">Klikni redak u tablici za uređivanje.</div>
     </div>
 
-    <!-- Brisanje tipa artikla -->
+    <!-- ====== BRIŠI ====== -->
     <div v-if="tab === 'delete'" class="q-gutter-md">
-      <div class="q-mb-sm">Kliknite na tip artikla za brisanje:</div>
+      <q-input dense outlined v-model="filter" label="Filtriraj (tip…)" class="q-mb-sm" clearable />
       <q-list bordered separator>
         <q-item
-          v-for="t in tipovi"
+          v-for="t in filtrirani"
           :key="t.sifra_tipa_artikla"
           clickable
-          @click="potvrdiBrisanje(t)"
+          @click="obrisiUpit(t)"
         >
-          <q-item-section>{{ t.tip_artikla }}</q-item-section>
+          <q-item-section>#{{ t.sifra_tipa_artikla }} — {{ t.tip_artikla }}</q-item-section>
+          <q-item-section side>
+            <q-btn dense flat color="negative" icon="delete" @click.stop="obrisiUpit(t)" />
+          </q-item-section>
         </q-item>
       </q-list>
     </div>
@@ -58,92 +67,103 @@
 </template>
 
 <script>
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { ref, onMounted } from 'vue'
-
 export default {
   name: 'AdminTipoviArtikalaPage',
   setup() {
-    const tab = ref('add')
+    const tab = ref('edit')
     const tipovi = ref([])
+    const filter = ref('')
+    const novo = ref({ tip_artikla: '' })
+    const uredi = ref({})
 
-    const form = ref({
-      tip_artikla: '',
-    })
+    const columns = [
+      { name: 'sifra_tipa_artikla', label: 'ID', field: 'sifra_tipa_artikla', align: 'left' },
+      { name: 'tip_artikla', label: 'Tip artikla', field: 'tip_artikla', align: 'left' },
+    ]
 
-    const urediForm = ref({})
-
-    const dohvatiTip = async () => {
-      try {
-        const res = await axios.get('http://localhost:3000/api/tipovi-artikla')
-        tipovi.value = res.data
-      } catch (err) {
-        alert('Greška pri dohvaćanju tipova artikla')
-        console.error(err)
-      }
+    const ucitaj = async () => {
+      const r = await axios.get('http://localhost:3000/api/tipovi-artikla', {
+        withCredentials: true,
+      })
+      tipovi.value = r.data
     }
 
-    const dodajTip = async () => {
+    const filtrirani = computed(() => {
+      const q = (filter.value || '').toLowerCase().trim()
+      if (!q) return tipovi.value
+      return tipovi.value.filter(
+        (t) =>
+          (t.tip_artikla || '').toLowerCase().includes(q) ||
+          String(t.sifra_tipa_artikla).includes(q),
+      )
+    })
+
+    const odaberi = (row) => {
+      uredi.value = { ...row }
+    }
+
+    const dodaj = async () => {
       try {
         await axios.post(
           'http://localhost:3000/api/tip-artikla',
-          { tip_artikla: form.value.tip_artikla },
+          { ...novo.value },
           { withCredentials: true },
         )
-        alert('Tip artikla dodan')
-        form.value.tip_artikla = ''
-        await dohvatiTip()
-      } catch (err) {
-        alert('Greška pri dodavanju tipa artikla')
-        console.error(err)
+        alert('Tip dodan')
+        novo.value = { tip_artikla: '' }
+        await ucitaj()
+        tab.value = 'edit'
+      } catch (e) {
+        console.error(e)
+        alert('Greška pri dodavanju tipa')
       }
     }
 
-    const postaviZaUredi = (tip) => {
-      urediForm.value = { ...tip } // sadrži sifra_tipa_artikla i tip_artikla
-    }
-
-    const azurirajTip = async () => {
+    const spremi = async () => {
       try {
         await axios.put(
-          `http://localhost:3000/api/tip-artikla/${urediForm.value.sifra_tipa_artikla}`,
-          { tip_artikla: urediForm.value.tip_artikla },
+          `http://localhost:3000/api/tip-artikla/${uredi.value.sifra_tipa_artikla}`,
+          { tip_artikla: uredi.value.tip_artikla },
           { withCredentials: true },
         )
-        alert('Tip artikla ažuriran')
-        await dohvatiTip()
-      } catch (err) {
-        alert('Greška pri ažuriranju tipa artikla')
-        console.error(err)
+        alert('Tip ažuriran')
+        await ucitaj()
+      } catch (e) {
+        console.error(e)
+        alert('Greška pri spremanju tipa')
       }
     }
 
-    const potvrdiBrisanje = async (tip) => {
-      const potvrda = confirm(`Želite li obrisati tip artikla "${tip.tip_artikla}"?`)
-      if (!potvrda) return
+    const obrisiUpit = async (t) => {
+      if (!confirm(`Obrisati tip #${t.sifra_tipa_artikla}?`)) return
       try {
-        await axios.delete(`http://localhost:3000/api/tip-artikla/${tip.sifra_tipa_artikla}`, {
+        await axios.delete(`http://localhost:3000/api/tip-artikla/${t.sifra_tipa_artikla}`, {
           withCredentials: true,
         })
-        alert('Tip artikla obrisan')
-        await dohvatiTip()
-      } catch (err) {
-        alert('Greška pri brisanju tipa artikla')
-        console.error(err)
+        alert('Tip obrisan')
+        await ucitaj()
+      } catch (e) {
+        console.error(e)
+        alert('Greška pri brisanju (možda postoji artikl s ovim tipom)')
       }
     }
 
-    onMounted(dohvatiTip)
-
+    onMounted(ucitaj)
     return {
       tab,
-      form,
       tipovi,
-      urediForm,
-      dodajTip,
-      postaviZaUredi,
-      azurirajTip,
-      potvrdiBrisanje,
+      filter,
+      columns,
+      filtrirani,
+      novo,
+      uredi,
+      ucitaj,
+      odaberi,
+      dodaj,
+      spremi,
+      obrisiUpit,
     }
   },
 }

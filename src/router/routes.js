@@ -16,22 +16,49 @@ const routes = [
       { path: '/main', component: () => import('pages/IndexPage.vue') },
       { path: '/main/login', component: () => import('pages/LoginPage.vue') },
       { path: '/main/register', component: () => import('pages/RegisterPage.vue') },
+      { path: '/admin/login', component: () => import('pages/admin/AdminLoginPage.vue') },
     ],
   },
   {
     path: '/admin',
     component: () => import('layouts/AdminLayout.vue'),
+    meta: { requiresAdmin: true },
     children: [
-      { path: '/admin/', component: () => import('pages/admin/AdminDashboardPage.vue') },
-      { path: '/admin/korisnik', component: () => import('pages/admin/AdminKorisniciPage.vue') },
-      { path: '/admin/artikl', component: () => import('pages/admin/AdminArtikliPage.vue') },
+      {
+        path: '/admin/dashboard',
+        component: () => import('pages/admin/AdminDashboardPage.vue'),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: '/admin/korisnik',
+        component: () => import('pages/admin/AdminKorisniciPage.vue'),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: '/admin/artikl',
+        component: () => import('pages/admin/AdminArtikliPage.vue'),
+        meta: { requiresAdmin: true },
+      },
       {
         path: '/admin/tip_artikla',
         component: () => import('pages/admin/AdminTipoviArtiklaPage.vue'),
+        meta: { requiresAdmin: true },
       },
-      { path: '/admin/lokacija', component: () => import('pages/admin/AdminLokacijaPage.vue') },
-      { path: '/admin/narudzba', component: () => import('pages/admin/AdminNarudzbePage.vue') },
-      { path: '/admin/uplata', component: () => import('pages/admin/AdminUplatePage.vue') },
+      {
+        path: '/admin/lokacija',
+        component: () => import('pages/admin/AdminLokacijaPage.vue'),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: '/admin/narudzba',
+        component: () => import('pages/admin/AdminNarudzbePage.vue'),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: '/admin/uplata',
+        component: () => import('pages/admin/AdminUplatePage.vue'),
+        meta: { requiresAdmin: true },
+      },
     ],
   },
 

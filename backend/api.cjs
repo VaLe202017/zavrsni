@@ -53,13 +53,13 @@ module.exports = connection
   }
 })*/
 app.get('/api/check', (req, res) => {
-  if (req.session.admin) {
-    return res.json({ loggedIn: true, role: 'admin', admin: req.session.admin })
-  }
   if (req.session.korisnik) {
     return res.json({ loggedIn: true, role: 'user', korisnik: req.session.korisnik })
   }
   res.json({ loggedIn: false })
+})
+app.get('/api/admin/check', (req, res) => {
+  res.json({ authenticated: !!req.session.admin })
 })
 /*******************************************************************/
 //api za login
@@ -732,23 +732,26 @@ app.delete('/api/narudzba/:id', (req, res) => {
 app.post('/api/admin', (req, res) => {
   const { username, password } = req.body
   if (!username || !password) {
-    return res.status(400).json({ message: 'Username and password required' })
+    return res.status(400).json({ error: 'Korisničko ime i lozinka su obavezni' })
   }
 
-  const query = 'SELECT * FROM Admin WHERE username = ? AND password = ?'
-  connection.query(query, [username, password], (err, results) => {
-    if (err) {
-      return res.status(500).json({ message: 'Server error' })
+  const sql = 'SELECT * FROM Admin WHERE username = ? AND password = ? LIMIT 1'
+  connection.query(sql, [username, password], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Greška na serveru' })
+    if (!rows || rows.length === 0) {
+      return res.status(401).json({ error: 'Neispravni podaci' })
     }
-
-    if (results.length > 0) {
-      req.session.user = { id: results[0].id, username: results[0].username }
-      res.json({ success: true, message: 'Login successful' })
-    } else {
-      res.status(401).json({ success: false, message: 'Invalid credentials' })
-    }
+    const admin = rows[0]
+    req.session.admin = { id: admin.id, username: admin.username }
+    res.json({ success: true, admin: { id: admin.id, username: admin.username } })
   })
 })
+/*******************************************************************/
+//potreban admin?
+function isAdmin(req, res, next) {
+  if (req.session && req.session.admin) return next()
+  return res.status(401).json({ error: 'Admin autorizacija je potrebna' })
+}
 /*******************************************************************/
 module.exports = app
 if (require.main === module) {
@@ -910,7 +913,7 @@ app.post('/api/stavke-narudzbe', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje stavki kroz admin sucelje
-app.post('/api/stavke-narudzbe-dodaj', (req, res) => {
+app.post('/api/stavke-narudzbe-dodaj', isAdmin, (req, res) => {
   const { sifra_narudzbe, stavke } = req.body
 
   const narId = Number(sifra_narudzbe)

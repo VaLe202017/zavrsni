@@ -11,5 +11,14 @@
       to="/main/login"
     />
     <q-btn label="Register" color="primary" to="/main/register" />
+    <q-btn
+      label="Admin Login"
+      style="color: #ff8f00"
+      color="white"
+      text-color="000000"
+      outline
+      class="q-mb-sm"
+      to="/admin/login"
+    />
   </q-page>
 </template>

@@ -3,7 +3,6 @@
     <div class="row items-center justify-between q-mb-md">
       <div class="text-h5">Aplikacija za iznajmljivanje opreme</div>
       <div>
-        <q-btn label="Košarica" color="orange" rounded />
         <q-btn color="orange" label="Odjava" rounded @click="logout" />
       </div>
     </div>
@@ -38,7 +37,7 @@ export default {
   name: 'AfterLogin',
   data() {
     const logout = async () => {
-      await axios.post('http://localhost:3000/api/logout')
+      await axios.post('http://localhost:3000/api/logout', {}, { withCredentials: true })
       window.location.href = '/'
     }
     return {

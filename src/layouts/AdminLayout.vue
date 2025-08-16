@@ -35,7 +35,7 @@ const linksList = [
   {
     title: 'Menu',
     icon: 'school',
-    link: '#/admin',
+    link: '#/admin/dashboard',
   },
   {
     title: 'Korisnici',
