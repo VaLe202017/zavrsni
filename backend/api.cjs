@@ -792,13 +792,6 @@ if (require.main === module) {
 }
 /*******************************************************************/
 //dodavanje inicijalnih stavki kroz kosaricu
-// helper: autentikacija (admin ILI korisnik)
-
-/**
- * DODAJ STAVKE U POSTOJEĆU NARUDŽBU
- * POST /api/narudzba/:id/stavke
- * body: { stavke: [ { sifra_artikla: number, kolicina: number }, ... ] }
- */
 app.post('/api/narudzba/:id/stavke', isAdmin, (req, res) => {
   const sifra_narudzbe = Number(req.params.id)
   const stavkeRaw = req.body.stavke

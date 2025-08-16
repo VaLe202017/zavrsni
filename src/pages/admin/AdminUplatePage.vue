@@ -153,7 +153,7 @@
             </div>
             <div class="text-caption">
               {{ u.nacin_placanja }} • {{ Number(u.ukupan_iznos || 0).toFixed(2) }} € • Status:
-              <b>{{ u.status_placanja ? 'Plaćeno' : 'Neplaćeno' }}</b>
+              <b> {{ u.status_placanja.data == 49 ? 'Plaćeno' : 'Nije plaćeno' }}</b>
             </div>
           </q-item-section>
           <q-item-section side>
