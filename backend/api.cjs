@@ -44,14 +44,7 @@ connection.getConnection((err, connection) => {
 
 module.exports = connection
 /*******************************************************************/
-//provjera sesije
-/*app.get('/api/check', (req, res) => {
-  if (req.session.korisnik) {
-    res.json({ loggedIn: true, korisnik: req.session.user })
-  } else {
-    res.json({ loggedIn: false })
-  }
-})*/
+//provjera sesije korisnik/admin
 app.get('/api/check', (req, res) => {
   if (req.session.korisnik) {
     return res.json({ loggedIn: true, role: 'user', korisnik: req.session.korisnik })
@@ -124,24 +117,49 @@ app.get('/api/artikliSearch', (req, res) => {
 /*******************************************************************/
 //unos narudzbe
 app.post('/api/narudzba', (req, res) => {
-  if (!req.session.korisnik) {
+  // 1) Odredi korisnički ID
+  let korisnikId = null
+
+  if (req.session?.admin) {
+    // admin kreira narudžbu za nekog kupca – mora poslati sifra_korisnika u bodyju
+    korisnikId = Number(req.body.sifra_korisnika ?? req.body.korisnikId)
+    if (!Number.isFinite(korisnikId)) {
+      return res
+        .status(400)
+        .json({ error: 'Kod unosa preko admina potrebno je poslati sifra_korisnika' })
+    }
+  } else if (req.session?.korisnik) {
+    korisnikId = Number(req.session.korisnik.sifra_korisnika)
+  } else {
     return res.status(401).json({ error: 'Niste prijavljeni' })
   }
 
-  const korisnikId = req.session.korisnik.sifra_korisnika
-  const stavke = req.body.stavke
-  const nacinPlacanja = req.body.nacin_placanja
-  const datumIznajmljivanja = req.body.datumIznajmljivanja
-  const datumVracanja = req.body.datumVracanja
-  const sifra_lokacije = req.body.sifraLokacije
-  const ukupanIznos = req.body.ukupnaCijena
+  // 2) Normaliziraj input (podrži snake/camel varijante)
+  const nacinPlacanja = req.body.nacin_placanja ?? req.body.nacinPlacanja ?? null
+  const datumIznajmljivanja = req.body.datum_iznajmljivanja ?? req.body.datumIznajmljivanja
+  const datumVracanja = req.body.datum_vracanja ?? req.body.datumVracanja
+  const sifra_lokacije = Number(req.body.sifra_lokacije ?? req.body.sifraLokacije)
+  const ukupanIznos = Number(req.body.ukupan_iznos ?? req.body.ukupnaCijena)
 
-  if (!Array.isArray(stavke) || stavke.length === 0) {
-    return res.status(400).json({ error: 'Košarica je prazna' })
+  // 3) Validacija osnovnih polja
+  if (
+    !datumIznajmljivanja ||
+    !datumVracanja ||
+    !Number.isFinite(sifra_lokacije) ||
+    !Number.isFinite(ukupanIznos)
+  ) {
+    return res.status(400).json({
+      error:
+        'sifra_lokacije, datum_iznajmljivanja, datum_vracanja i ukupan_iznos/ukupnaCijena su obavezni',
+    })
   }
-  const sqlNarudzba =
-    'INSERT INTO narudzbe (sifra_korisnika, datum_iznajmljivanja, datum_vracanja, ukupan_iznos, sifra_lokacije) VALUES (?, ?, ?, ?, ?)'
 
+  // 4) Unos narudžbe
+  const sqlNarudzba = `
+    INSERT INTO narudzbe
+      (sifra_korisnika, datum_iznajmljivanja, datum_vracanja, ukupan_iznos, sifra_lokacije)
+    VALUES (?, ?, ?, ?, ?)
+  `
   connection.query(
     sqlNarudzba,
     [korisnikId, datumIznajmljivanja, datumVracanja, ukupanIznos, sifra_lokacije],
@@ -153,14 +171,26 @@ app.post('/api/narudzba', (req, res) => {
 
       const narudzbaId = result.insertId
 
-      const sqlPlacanje = 'INSERT INTO placanja (sifra_narudzbe, nacin_placanja) VALUES (?, ?)'
+      // 5) Ako je poslan način plaćanja, upiši i to
+      if (!nacinPlacanja) {
+        return res.status(201).json({ success: true, sifra_narudzbe: narudzbaId })
+      }
 
-      connection.query(sqlPlacanje, [narudzbaId, nacinPlacanja], (err2) => {
-        if (err2) {
-          console.error('Greška kod unosa plaćanja:', err2)
-          return res.status(500).json({ error: 'Greška kod unosa plaćanja' })
+      const sqlPlacanje = `
+        INSERT INTO placanja (sifra_narudzbe, nacin_placanja)
+        VALUES (?, ?)
+      `
+      connection.query(sqlPlacanje, [narudzbaId, nacinPlacanja], (e2) => {
+        if (e2) {
+          console.error('Greška kod unosa plaćanja:', e2)
+          // Narudžba je spremljena, samo plaćanje nije — javi to jasno
+          return res.status(201).json({
+            success: true,
+            sifra_narudzbe: narudzbaId,
+            warning: 'Narudžba spremljena, ali nije spremljeno plaćanje',
+          })
         }
-        res.status(201).json({ success: true, narudzbaId })
+        return res.status(201).json({ success: true, sifra_narudzbe: narudzbaId })
       })
     },
   )
@@ -211,7 +241,7 @@ app.post('/api/register', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje korisnika
-app.post('/api/korisnik', (req, res) => {
+app.post('/api/korisnik', isAdmin, (req, res) => {
   const { ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password } =
     req.body
   const sql =
@@ -251,7 +281,7 @@ app.get('/api/svi-korisnici', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje korisnika
-app.put('/api/korisnik/:id', (req, res) => {
+app.put('/api/korisnik/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { ime_korisnika, prezime_korisnika, broj_telefona_korisnika, email_korisnika, password } =
     req.body
@@ -273,7 +303,7 @@ app.put('/api/korisnik/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje korisnika
-app.delete('/api/korisnik/:id', (req, res) => {
+app.delete('/api/korisnik/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = 'DELETE FROM korisnik WHERE sifra_korisnika = ?'
   connection.query(sql, [id], (err) => {
@@ -332,7 +362,7 @@ app.get('/api/svi-artikli', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje artika
-app.put('/api/artikl/:id', (req, res) => {
+app.put('/api/artikl/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla } =
     req.body
@@ -354,7 +384,7 @@ app.put('/api/artikl/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje artikla
-app.delete('/api/artikl/:id', (req, res) => {
+app.delete('/api/artikl/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = 'DELETE FROM artikli WHERE sifra_artikla = ?'
   connection.query(sql, [id], (err) => {
@@ -364,7 +394,7 @@ app.delete('/api/artikl/:id', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje artika
-app.put('/api/artikl/:id', (req, res) => {
+app.put('/api/artikl/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { naziv_artikla, dostupna_kolicina, cijena_dan, sifra_lokacije, sifra_tipa_artikla } =
     req.body
@@ -386,7 +416,7 @@ app.put('/api/artikl/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje artikla
-app.delete('/api/artikl/:id', (req, res) => {
+app.delete('/api/artikl/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = 'DELETE FROM artikli WHERE sifra_artikla = ?'
   connection.query(sql, [id], (err) => {
@@ -405,7 +435,7 @@ app.get('/api/tipovi-artikla', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje tipa artikla
-app.post('/api/tip-artikla', (req, res) => {
+app.post('/api/tip-artikla', isAdmin, (req, res) => {
   const { tip_artikla } = req.body
   const sql = 'INSERT INTO tip_artikla (tip_artikla) VALUES (?)'
   const values = [tip_artikla]
@@ -424,7 +454,7 @@ app.post('/api/tip-artikla', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje tipa artika
-app.put('/api/tip-artikla/:id', (req, res) => {
+app.put('/api/tip-artikla/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { tip_artikla } = req.body
 
@@ -441,7 +471,7 @@ app.put('/api/tip-artikla/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje artikla
-app.delete('/api/tip-artikla/:id', (req, res) => {
+app.delete('/api/tip-artikla/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = 'DELETE FROM tip_artikla WHERE sifra_tipa_artikla = ?'
   connection.query(sql, [id], (err) => {
@@ -461,7 +491,7 @@ app.get('/api/lokacije', (req, res) => {
 })
 /*******************************************************************/
 //dohvat lokacija za admin
-app.get('/api/sve-lokacije', (req, res) => {
+app.get('/api/sve-lokacije', isAdmin, (req, res) => {
   const sql =
     'SELECT sifra_lokacije, naziv_lokacije, adresa_lokacije, grad, drzava FROM lokacije ORDER BY naziv_lokacije ASC'
   connection.query(sql, (err, results) => {
@@ -471,7 +501,7 @@ app.get('/api/sve-lokacije', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje lokacija
-app.post('/api/lokacija', (req, res) => {
+app.post('/api/lokacija', isAdmin, (req, res) => {
   const { naziv_lokacije, adresa_lokacije, grad, drzava } = req.body
 
   if (!naziv_lokacije || !adresa_lokacije || !grad || !drzava) {
@@ -499,7 +529,7 @@ app.post('/api/lokacija', (req, res) => {
 })
 /*******************************************************************/
 //ažuriranje lokacija
-app.put('/api/lokacija/:id', (req, res) => {
+app.put('/api/lokacija/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { naziv_lokacije, adresa_lokacije, grad, drzava } = req.body
 
@@ -526,7 +556,7 @@ app.put('/api/lokacija/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje lokacije
-app.delete('/api/lokacija/:id', (req, res) => {
+app.delete('/api/lokacija/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = 'DELETE FROM lokacije WHERE sifra_lokacije = ?'
 
@@ -581,7 +611,7 @@ app.get('/api/narudzbe', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje narudzbe
-app.post('/api/narudzba', (req, res) => {
+app.post('/api/narudzba', isAdmin, (req, res) => {
   const {
     sifra_korisnika,
     sifra_lokacije,
@@ -636,7 +666,7 @@ app.post('/api/narudzba', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje narudzbe
-app.put('/api/narudzba/:id', (req, res) => {
+app.put('/api/narudzba/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const {
     sifra_korisnika, // možeš dozvoliti edit ili ignorirati (ovdje je dozvoljeno)
@@ -705,7 +735,7 @@ app.put('/api/narudzba/:id', (req, res) => {
 })
 /*******************************************************************/
 //brisanje narudzbe
-app.delete('/api/narudzba/:id', (req, res) => {
+app.delete('/api/narudzba/:id', isAdmin, (req, res) => {
   const { id } = req.params
 
   const delPlac = `DELETE FROM placanja WHERE sifra_narudzbe = ?`
@@ -762,28 +792,25 @@ if (require.main === module) {
 }
 /*******************************************************************/
 //dodavanje inicijalnih stavki kroz kosaricu
-app.post('/api/stavke-narudzbe', (req, res) => {
-  if (!req.session?.korisnik) {
-    return res.status(401).json({ error: 'Niste prijavljeni' })
-  }
-  const korisnikId = req.session.korisnik.sifra_korisnika
+// helper: autentikacija (admin ILI korisnik)
 
-  // prihvati camelCase i snake_case iz frontenda
-  const nacinPlacanja = req.body.nacinPlacanja ?? req.body.nacin_placanja ?? 'Gotovina'
-  const datumIznajmljivanja = req.body.datumIznajmljivanja ?? req.body.datum_iznajmljivanja
-  const datumVracanja = req.body.datumVracanja ?? req.body.datum_vracanja
-  const sifra_lokacije = req.body.sifraLokacije ?? req.body.sifra_lokacije
-  const ukupanIznos = Number(req.body.ukupnaCijena ?? req.body.ukupan_iznos ?? 0)
+/**
+ * DODAJ STAVKE U POSTOJEĆU NARUDŽBU
+ * POST /api/narudzba/:id/stavke
+ * body: { stavke: [ { sifra_artikla: number, kolicina: number }, ... ] }
+ */
+app.post('/api/narudzba/:id/stavke', isAdmin, (req, res) => {
+  const sifra_narudzbe = Number(req.params.id)
   const stavkeRaw = req.body.stavke
 
-  if (!datumIznajmljivanja || !datumVracanja || !sifra_lokacije) {
-    return res.status(400).json({ error: 'Nedostaju datumi ili lokacija' })
+  if (!Number.isFinite(sifra_narudzbe)) {
+    return res.status(400).json({ error: 'Neispravan ID narudžbe' })
   }
   if (!Array.isArray(stavkeRaw) || stavkeRaw.length === 0) {
-    return res.status(400).json({ error: 'Košarica je prazna' })
+    return res.status(400).json({ error: 'Stavke su obavezne' })
   }
 
-  // normaliziraj stavke
+  // normalizacija + filtriranje
   const stavke = stavkeRaw
     .map((s) => ({
       sifra_artikla: Number(s.sifra_artikla),
@@ -795,7 +822,7 @@ app.post('/api/stavke-narudzbe', (req, res) => {
     return res.status(400).json({ error: 'Neispravne stavke (fali sifra_artikla/kolicina)' })
   }
 
-  // agregiraj količine po artiklu (radi provjere + update zaliha)
+  // agregiraj po artiklu (radi provjere i umanjenja zaliha)
   const kolicinePoArtiklu = new Map()
   for (const s of stavke) {
     kolicinePoArtiklu.set(
@@ -808,10 +835,10 @@ app.post('/api/stavke-narudzbe', (req, res) => {
   connection.getConnection((err, conn) => {
     if (err) return res.status(500).json({ error: 'DB konekcija nije dostupna' })
 
-    const fail = (e, msg = 'Greška pri spremanju narudžbe') =>
+    const rollback = (e, msg = 'Greška pri spremanju stavki') =>
       conn.rollback(() => {
         conn.release()
-        console.error('ROLLBACK /api/narudzba-komplet:', e)
+        console.error('ROLLBACK /api/narudzba/:id/stavke:', e)
         res.status(500).json({ error: msg })
       })
 
@@ -821,96 +848,139 @@ app.post('/api/stavke-narudzbe', (req, res) => {
         return res.status(500).json({ error: 'Transakcija nije mogla krenuti' })
       }
 
-      // 1) Insert narudžbe
+      // 1) Dohvati narudžbu (radi provjere i izračuna broja dana)
       const sqlNar = `
-        INSERT INTO narudzbe (sifra_korisnika, sifra_lokacije, datum_iznajmljivanja, datum_vracanja, ukupan_iznos)
-        VALUES (?, ?, ?, ?, ?)
+        SELECT sifra_korisnika, sifra_lokacije, datum_iznajmljivanja, datum_vracanja
+        FROM narudzbe
+        WHERE sifra_narudzbe = ?
+        LIMIT 1
       `
-      conn.query(
-        sqlNar,
-        [korisnikId, sifra_lokacije, datumIznajmljivanja, datumVracanja, ukupanIznos],
-        (eNar, rNar) => {
-          if (eNar) return fail(eNar, 'Greška kod dodavanja narudžbe')
-          const narudzbaId = rNar.insertId
+      conn.query(sqlNar, [sifra_narudzbe], (eNar, rNar) => {
+        if (eNar) return rollback(eNar, 'Greška pri dohvaćanju narudžbe')
+        if (rNar.length === 0) {
+          conn.release()
+          return res.status(404).json({ error: 'Narudžba ne postoji' })
+        }
+        const nar = rNar[0]
 
-          // 2) Insert plaćanja (uvijek insert; nacinPlacanja nikad NULL)
-          const sqlPlac = 'INSERT INTO placanja (sifra_narudzbe, nacin_placanja) VALUES (?, ?)'
-          conn.query(sqlPlac, [narudzbaId, nacinPlacanja || 'Gotovina'], (ePlac) => {
-            if (ePlac) return fail(ePlac, 'Greška kod dodavanja plaćanja')
+        // ako je običan korisnik, mora biti vlasnik narudžbe
+        if (req.session?.korisnik && !req.session?.admin) {
+          const userId = Number(req.session.korisnik.sifra_korisnika)
+          if (userId !== Number(nar.sifra_korisnika)) {
+            conn.release()
+            return res.status(403).json({ error: 'Nedozvoljen pristup ovoj narudžbi' })
+          }
+        }
 
-            // 3) Provjera zaliha
-            const sqlArt = `
-            SELECT sifra_artikla, dostupna_kolicina
-            FROM artikli
-            WHERE sifra_artikla IN (${artiklIds.map(() => '?').join(',')})
-          `
-            conn.query(sqlArt, artiklIds, (eArt, rowsArt) => {
-              if (eArt) return fail(eArt, 'Greška pri provjeri artikala')
+        // 2) Provjeri artikle i zalihe
+        const sqlArt = `
+          SELECT sifra_artikla, dostupna_kolicina, cijena_dan
+          FROM artikli
+          WHERE sifra_artikla IN (${artiklIds.map(() => '?').join(',')})
+        `
+        conn.query(sqlArt, artiklIds, (eArt, rowsArt) => {
+          if (eArt) return rollback(eArt, 'Greška pri provjeri artikala')
 
-              const byId = new Map(rowsArt.map((r) => [r.sifra_artikla, r]))
+          const byId = new Map(rowsArt.map((r) => [r.sifra_artikla, r]))
+          for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+            const r = byId.get(aid)
+            if (!r) {
+              // 409 = konflikt – artikl ne postoji
+              return conn.rollback(() => {
+                conn.release()
+                return res.status(409).json({ error: `Artikl ne postoji: ${aid}` })
+              })
+            }
+            if (Number(r.dostupna_kolicina) < Number(kol)) {
+              return conn.rollback(() => {
+                conn.release()
+                return res.status(409).json({ error: `Nema dovoljno na zalihi za artikl ${aid}` })
+              })
+            }
+          }
+
+          // 3) INSERT stavki (eksplodirano po količini)
+          const rows = []
+          for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+            for (let i = 0; i < kol; i++) rows.push([sifra_narudzbe, aid])
+          }
+
+          conn.query(
+            'INSERT INTO stavke_narudzbe (sifra_narudzbe, sifra_artikla) VALUES ?',
+            [rows],
+            (eIns) => {
+              if (eIns) return rollback(eIns, 'Greška pri spremanju stavki')
+
+              // 4) Umanji zalihe
+              const updates = []
               for (const [aid, kol] of kolicinePoArtiklu.entries()) {
-                const r = byId.get(aid)
-                if (!r) {
-                  // 409 = Conflict → artikl ne postoji
-                  return conn.rollback(() => {
-                    conn.release()
-                    return res.status(409).json({ error: `Artikl ne postoji: ${aid}` })
-                  })
-                }
-                if (Number(r.dostupna_kolicina) < Number(kol)) {
-                  return conn.rollback(() => {
-                    conn.release()
-                    return res
-                      .status(409)
-                      .json({ error: `Nema dovoljno na zalihi za artikl ${aid}` })
-                  })
-                }
-              }
-
-              // 4) INSERT stavki (eksplodirano po količini)
-              const rows = []
-              for (const [aid, kol] of kolicinePoArtiklu.entries()) {
-                for (let i = 0; i < kol; i++) rows.push([narudzbaId, aid])
-              }
-
-              conn.query(
-                'INSERT INTO stavke_narudzbe (sifra_narudzbe, sifra_artikla) VALUES ?',
-                [rows],
-                (eStav) => {
-                  if (eStav) return fail(eStav, 'Greška pri spremanju stavki')
-
-                  // 5) Smanji zalihe
-                  const updatePromises = []
-                  for (const [aid, kol] of kolicinePoArtiklu.entries()) {
-                    updatePromises.push(
-                      new Promise((resolve, reject) => {
-                        conn.query(
-                          'UPDATE artikli SET dostupna_kolicina = dostupna_kolicina - ? WHERE sifra_artikla = ?',
-                          [kol, aid],
-                          (eUpd) => (eUpd ? reject(eUpd) : resolve()),
-                        )
-                      }),
+                updates.push(
+                  new Promise((resolve, reject) => {
+                    conn.query(
+                      'UPDATE artikli SET dostupna_kolicina = dostupna_kolicina - ? WHERE sifra_artikla = ?',
+                      [kol, aid],
+                      (eUpd) => (eUpd ? reject(eUpd) : resolve()),
                     )
-                  }
+                  }),
+                )
+              }
 
-                  Promise.all(updatePromises)
-                    .then(() => {
-                      conn.commit((eC) => {
-                        if (eC) return fail(eC)
-                        conn.release()
-                        res.status(201).json({ success: true, sifra_narudzbe: narudzbaId })
-                      })
-                    })
-                    .catch((eU) => fail(eU, 'Greška pri ažuriranju zaliha'))
-                },
-              )
-            })
-          })
-        },
-      )
+              Promise.all(updates)
+                .then(() => {
+                  // 5) Re-izračun ukupan_iznos = (suma cijena_dan svih stavki) * broj_dana
+                  const brojDana = (() => {
+                    try {
+                      const s = new Date(nar.datum_iznajmljivanja + 'T00:00:00')
+                      const e = new Date(nar.datum_vracanja + 'T00:00:00')
+                      const diff = e - s
+                      if (!Number.isFinite(diff) || diff < 0) return 1
+                      const d = Math.round(diff / (1000 * 60 * 60 * 24))
+                      return Math.max(1, d)
+                    } catch {
+                      return 1
+                    }
+                  })()
+
+                  const sqlSum = `
+                    SELECT COALESCE(SUM(a.cijena_dan), 0) AS suma_dnevno
+                    FROM stavke_narudzbe sn
+                    JOIN artikli a ON a.sifra_artikla = sn.sifra_artikla
+                    WHERE sn.sifra_narudzbe = ?
+                  `
+                  conn.query(sqlSum, [sifra_narudzbe], (eSum, rSum) => {
+                    if (eSum) return rollback(eSum, 'Greška pri izračunu iznosa')
+                    const sumaDnevno = Number(rSum?.[0]?.suma_dnevno || 0)
+                    const noviUkupan = Number((sumaDnevno * brojDana).toFixed(2))
+
+                    conn.query(
+                      'UPDATE narudzbe SET ukupan_iznos = ? WHERE sifra_narudzbe = ?',
+                      [noviUkupan, sifra_narudzbe],
+                      (eUpdNar) => {
+                        if (eUpdNar) return rollback(eUpdNar, 'Greška pri spremanju iznosa')
+                        conn.commit((eC) => {
+                          if (eC) return rollback(eC)
+                          conn.release()
+                          res.status(201).json({
+                            success: true,
+                            sifra_narudzbe,
+                            dodano_redaka: rows.length,
+                            novi_ukupan_iznos: noviUkupan,
+                            broj_dana: brojDana,
+                          })
+                        })
+                      },
+                    )
+                  })
+                })
+                .catch((eU) => rollback(eU, 'Greška pri ažuriranju zaliha'))
+            },
+          )
+        })
+      })
     })
   })
 })
+
 /*******************************************************************/
 //dodavanje stavki kroz admin sucelje
 app.post('/api/stavke-narudzbe-dodaj', isAdmin, (req, res) => {
@@ -1058,7 +1128,7 @@ app.post('/api/stavke-narudzbe-dodaj', isAdmin, (req, res) => {
 })
 /*******************************************************************/
 //brisanje stavki krozu admin sucelje
-app.delete('/api/stavka-narudzbe/:id', (req, res) => {
+app.delete('/api/stavka-narudzbe/:id', isAdmin, (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'Neispravan ID' })
 
@@ -1117,7 +1187,7 @@ app.delete('/api/stavka-narudzbe/:id', (req, res) => {
 })
 /*******************************************************************/
 //ucitavanje stavki po narudzbi
-app.get('/api/stavke-narudzbe/:id', (req, res) => {
+app.get('/api/stavke-narudzbe/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const sql = `
     SELECT sn.sifra_artikla_narudzbe, sn.sifra_narudzbe, sn.sifra_artikla,
@@ -1137,7 +1207,7 @@ app.get('/api/stavke-narudzbe/:id', (req, res) => {
 })
 /*******************************************************************/
 //azuriranje samo cijene
-app.put('/api/cijena-narudzbe/:id', (req, res) => {
+app.put('/api/cijena-narudzbe/:id', isAdmin, (req, res) => {
   const { id } = req.params
   const { ukupan_iznos } = req.body
 
@@ -1159,10 +1229,8 @@ app.put('/api/cijena-narudzbe/:id', (req, res) => {
 })
 /*******************************************************************/
 // ucitavanje uplata
-app.get(
-  '/api/uplate',
-  /* isAdmin, */ (req, res) => {
-    const sql = `
+app.get('/api/uplate', isAdmin, (req, res) => {
+  const sql = `
     SELECT
       p.sifra_narudzbe,
       p.nacin_placanja,
@@ -1178,66 +1246,56 @@ app.get(
     JOIN korisnik k ON k.sifra_korisnika = n.sifra_korisnika
     ORDER BY p.sifra_narudzbe DESC
   `
-    connection.query(sql, (err, rows) => {
-      if (err) {
-        console.error('Greška dohvat uplata:', err)
-        return res.status(500).json({ error: 'Greška pri dohvaćanju uplata' })
-      }
-      res.json(rows)
-    })
-  },
-)
+  connection.query(sql, (err, rows) => {
+    if (err) {
+      console.error('Greška dohvat uplata:', err)
+      return res.status(500).json({ error: 'Greška pri dohvaćanju uplata' })
+    }
+    res.json(rows)
+  })
+})
 /*******************************************************************/
 // dodavanje uplate
-app.post(
-  '/api/uplata',
-  /* isAdmin, */ (req, res) => {
-    const { sifra_narudzbe, nacin_placanja, status_placanja } = req.body
-    if (!sifra_narudzbe || !nacin_placanja) {
-      return res.status(400).json({ error: 'sifra_narudzbe i nacin_placanja su obavezni' })
-    }
-    const status = Number(status_placanja ? 1 : 0)
+app.post('/api/uplata', isAdmin, (req, res) => {
+  const { sifra_narudzbe, nacin_placanja, status_placanja } = req.body
+  if (!sifra_narudzbe || !nacin_placanja) {
+    return res.status(400).json({ error: 'sifra_narudzbe i nacin_placanja su obavezni' })
+  }
+  const status = Number(status_placanja ? 1 : 0)
 
-    const qIns =
-      'INSERT INTO placanja (sifra_narudzbe, nacin_placanja, status_placanja) VALUES (?, ?)'
-    connection.query(qIns, [sifra_narudzbe, nacin_placanja, status], (e3) => {
-      if (e3) return res.status(500).json({ error: 'Greška pri dodavanju uplate' })
-      res.status(201).json({ success: true, upsert: 'inserted' })
-    })
-  },
-)
+  const qIns =
+    'INSERT INTO placanja (sifra_narudzbe, nacin_placanja, status_placanja) VALUES (?, ?)'
+  connection.query(qIns, [sifra_narudzbe, nacin_placanja, status], (e3) => {
+    if (e3) return res.status(500).json({ error: 'Greška pri dodavanju uplate' })
+    res.status(201).json({ success: true, upsert: 'inserted' })
+  })
+})
 /*******************************************************************/
 //azuriranje uplate
-app.put(
-  '/api/uplata/:sifraNar',
-  /* isAdmin, */ (req, res) => {
-    const sifraNar = Number(req.params.sifraNar)
-    const { nacin_placanja, status_placanja } = req.body
-    if (!Number.isFinite(sifraNar) || !nacin_placanja) {
-      return res.status(400).json({ error: 'Neispravan zahtjev' })
-    }
-    const sql = 'UPDATE placanja SET nacin_placanja = ?, status_placanja=? WHERE sifra_narudzbe = ?'
-    connection.query(sql, [nacin_placanja, status_placanja, sifraNar], (err, result) => {
-      if (err) return res.status(500).json({ error: 'Greška pri spremanju' })
-      if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
-      res.json({ success: true })
-    })
-  },
-)
+app.put('/api/uplata/:sifraNar', isAdmin, (req, res) => {
+  const sifraNar = Number(req.params.sifraNar)
+  const { nacin_placanja, status_placanja } = req.body
+  if (!Number.isFinite(sifraNar) || !nacin_placanja) {
+    return res.status(400).json({ error: 'Neispravan zahtjev' })
+  }
+  const sql = 'UPDATE placanja SET nacin_placanja = ?, status_placanja=? WHERE sifra_narudzbe = ?'
+  connection.query(sql, [nacin_placanja, status_placanja, sifraNar], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Greška pri spremanju' })
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
+    res.json({ success: true })
+  })
+})
 /*******************************************************************/
 //brisanje uplate
-app.delete(
-  '/api/uplata/:sifraNar',
-  /* isAdmin, */ (req, res) => {
-    const sifraNar = Number(req.params.sifraNar)
-    if (!Number.isFinite(sifraNar)) {
-      return res.status(400).json({ error: 'Neispravan ID' })
-    }
-    const sql = 'DELETE FROM placanja WHERE sifra_narudzbe = ?'
-    connection.query(sql, [sifraNar], (err, result) => {
-      if (err) return res.status(500).json({ error: 'Greška pri brisanju' })
-      if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
-      res.json({ success: true })
-    })
-  },
-)
+app.delete('/api/uplata/:sifraNar', isAdmin, (req, res) => {
+  const sifraNar = Number(req.params.sifraNar)
+  if (!Number.isFinite(sifraNar)) {
+    return res.status(400).json({ error: 'Neispravan ID' })
+  }
+  const sql = 'DELETE FROM placanja WHERE sifra_narudzbe = ?'
+  connection.query(sql, [sifraNar], (err, result) => {
+    if (err) return res.status(500).json({ error: 'Greška pri brisanju' })
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
+    res.json({ success: true })
+  })
+})

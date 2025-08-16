@@ -42,8 +42,12 @@ export default {
     }
     return {
       items: [
-        { label: 'Artikli', route: '/artikli' },
-        { label: 'Košarica', route: '/kosarica' },
+        { label: 'Korisnici', route: '/admin/korisnik' },
+        { label: 'Artikli', route: '/admin/artikl' },
+        { label: 'Tipovi artikla', route: '/admin/tip_artikla' },
+        { label: 'Lokacije', route: '/admin/lokacija' },
+        { label: 'Narudžbe', route: '/admin/narudzba' },
+        { label: 'Uplate', route: '/admin/uplata' },
       ],
       logout,
     }

@@ -10,7 +10,7 @@
       class="q-mb-sm"
       to="/main/login"
     />
-    <q-btn label="Register" color="primary" to="/main/register" />
+    <q-btn label="Register" color="primary" to="/main/register" class="q-mb-sm" />
     <q-btn
       label="Admin Login"
       style="color: #ff8f00"

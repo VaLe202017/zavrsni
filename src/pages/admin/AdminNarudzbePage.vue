@@ -563,9 +563,8 @@ export default {
           return
         }
         await axios.post(
-          'http://localhost:3000/api/stavke-narudzbe',
+          `http://localhost:3000/api/narudzba/${uredi.value.sifra_narudzbe}/stavke`,
           {
-            sifra_narudzbe: uredi.value.sifra_narudzbe,
             stavke: [
               {
                 sifra_artikla: Number(novaStavka.value.sifra_artikla),
@@ -577,7 +576,6 @@ export default {
         )
         await ucitajStavke(uredi.value.sifra_narudzbe)
         // nakon svake promjene stavki – spremi novi izračun u DB
-        await spremiNarudzbu()
         novaStavka.value = { sifra_artikla: null, kolicina: 1 }
         alert('Stavke dodane')
       } catch (e) {
