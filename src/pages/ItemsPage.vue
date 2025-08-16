@@ -101,6 +101,7 @@ export default {
         postoji.kolicina += 1
       } else {
         kosarica.push({
+          sifra_artikla: Number(artikl.sifra_artikla),
           naziv_artikla: artikl.naziv_artikla,
           cijena_dan: artikl.cijena_dan,
           kolicina: 1,

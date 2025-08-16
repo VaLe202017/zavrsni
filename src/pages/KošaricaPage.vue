@@ -5,22 +5,22 @@
     </div>
 
     <q-table
+      v-if="kosarica.length"
       :rows="kosarica"
       :columns="columns"
-      row-key="naziv_artikla"
+      row-key="sifra_artikla"
       flat
       bordered
-      v-if="kosarica.length"
       class="q-mb-md"
     >
-      <template v-slot:body-cell-ukloni="props">
+      <template #body-cell-ukloni="props">
         <q-td :props="props">
           <q-btn
             dense
             flat
             color="negative"
             icon="delete"
-            @click="ukloniArtikl(props.row.naziv_artikla)"
+            @click="ukloniArtikl(props.row.sifra_artikla)"
           />
         </q-td>
       </template>
@@ -28,7 +28,14 @@
 
     <div v-else class="text-subtitle1 q-mt-md">Košarica je prazna.</div>
 
-    <div v-if="kosarica.length" class="text-h6">Ukupno: {{ ukupnaCijena }} €</div>
+    <div v-if="kosarica.length" class="q-mt-sm">
+      <div class="text-subtitle2">
+        Trajanje: <b>{{ brojDana }}</b> dan(a)
+      </div>
+      <div class="text-h6">
+        Ukupno: <b>{{ ukupnaCijenaZaPeriod }} €</b>
+      </div>
+    </div>
 
     <q-btn
       v-if="kosarica.length && !prikaziDatum"
@@ -38,6 +45,7 @@
       @click="prikaziDatum = true"
     />
 
+    <!-- KORAK 1: Datumi -->
     <q-slide-transition>
       <div v-show="prikaziDatum" class="q-mt-md column q-gutter-md">
         <q-input
@@ -46,8 +54,9 @@
           label="Datum početka iznajmljivanja"
           mask="####-##-##"
           readonly
+          :rules="[(v) => !!v || 'Obavezno']"
         >
-          <template v-slot:append>
+          <template #append>
             <q-icon name="event" class="cursor-pointer">
               <q-popup-proxy cover transition-show="scale" transition-hide="scale">
                 <q-date v-model="datumIznajmljivanja" :min="minDatum" />
@@ -56,8 +65,15 @@
           </template>
         </q-input>
 
-        <q-input filled v-model="datumVracanja" label="Datum vraćanja" mask="####-##-##" readonly>
-          <template v-slot:append>
+        <q-input
+          filled
+          v-model="datumVracanja"
+          label="Datum vraćanja"
+          mask="####-##-##"
+          readonly
+          :rules="[(v) => !!v || 'Obavezno']"
+        >
+          <template #append>
             <q-icon name="event" class="cursor-pointer">
               <q-popup-proxy cover transition-show="scale" transition-hide="scale">
                 <q-date v-model="datumVracanja" :min="datumIznajmljivanja || minDatum" />
@@ -76,6 +92,7 @@
       </div>
     </q-slide-transition>
 
+    <!-- KORAK 2: Plaćanje -->
     <q-slide-transition>
       <div v-show="prikaziPlacanje" class="q-mt-md">
         <q-select
@@ -106,6 +123,7 @@ export default {
     const odabirPlacanja = ref(null)
     const datumVracanja = ref('')
     const datumIznajmljivanja = ref('')
+
     const minDatum = computed(() => {
       const today = new Date()
       return today.toISOString().split('T')[0]
@@ -120,97 +138,136 @@ export default {
       { name: 'ukloni', label: '', align: 'center' },
     ]
 
-    const ukupnaCijena = computed(() => {
-      return kosarica.value
-        .reduce((ukupno, artikal) => ukupno + artikal.cijena_dan * artikal.kolicina, 0)
-        .toFixed(2)
+    const brojDana = computed(() => {
+      if (!datumIznajmljivanja.value || !datumVracanja.value) return 1
+      const start = new Date(datumIznajmljivanja.value + 'T00:00:00')
+      const end = new Date(datumVracanja.value + 'T00:00:00')
+      const diffMs = end - start
+      if (diffMs < 0) return 1
+      const d = Math.round(diffMs / (1000 * 60 * 60 * 24))
+      return Math.max(1, d) // isti dan = 1
     })
+
+    const ukupnaCijena = computed(() => {
+      return kosarica.value.reduce(
+        (ukupno, a) => ukupno + Number(a.cijena_dan) * Number(a.kolicina || 1),
+        0,
+      )
+    })
+
+    const ukupnaCijenaZaPeriod = computed(() => (ukupnaCijena.value * brojDana.value).toFixed(2))
 
     const loadKosarica = () => {
       const spremljeno = localStorage.getItem('kosarica')
       kosarica.value = spremljeno ? JSON.parse(spremljeno) : []
     }
 
-    const ukloniArtikl = (naziv) => {
-      kosarica.value = kosarica.value.filter((item) => item.naziv_artikla !== naziv)
+    const ukloniArtikl = (sifraArtikla) => {
+      kosarica.value = kosarica.value.filter((item) => item.sifra_artikla !== sifraArtikla)
       localStorage.setItem('kosarica', JSON.stringify(kosarica.value))
       alert('Artikl uklonjen iz košarice')
     }
 
     const lokacijaNarudzbe = computed(() => {
-      if (kosarica.value.length === 0) return null
-      const prva = kosarica.value[0].naziv_lokacije
-      const sveIste = kosarica.value.every((item) => item.naziv_lokacije === prva)
+      if (!kosarica.value.length) return null
+      const prva = kosarica.value[0].sifra_lokacije
+      const sveIste = kosarica.value.every((item) => item.sifra_lokacije === prva)
       return sveIste ? prva : null
     })
 
     const sifraLok = computed(() => {
-      if (kosarica.value.length === 0) return null
-      const sifra = kosarica.value[0].sifra_lokacije
-      return sifra
+      if (!kosarica.value.length) return null
+      return kosarica.value[0].sifra_lokacije ?? null
     })
 
-    const pokreniPlacanje = async (nacin) => {
+    const pokreniPlacanje = async () => {
       try {
-        const userRes = await axios.get('http://localhost:3000/api/check', {
-          withCredentials: true,
-        })
+        // 1) provjera da su sve stavke s iste lokacije
         if (!lokacijaNarudzbe.value) {
           alert('Svi artikli u košarici moraju biti s iste lokacije.')
           return
         }
-        if (userRes.data.loggedIn == false) {
+
+        // 2) provjera login-a
+        const userRes = await axios.get('http://localhost:3000/api/check', {
+          withCredentials: true,
+        })
+        if (!userRes.data.loggedIn) {
           alert('Morate biti prijavljeni za narudžbu')
           router.push('/main/login')
           return
         }
 
-        await axios.post(
-          'http://localhost:3000/api/narudzba',
+        // 3) validacija stavki (mora postojati sifra_artikla)
+        const stavkePayload = kosarica.value.map((a) => ({
+          sifra_artikla: a.sifra_artikla, // OBAVEZNO da postoji u košarici
+          kolicina: Number(a.kolicina || 1),
+        }))
+        if (stavkePayload.some((s) => !Number.isFinite(s.sifra_artikla))) {
+          alert('Greška: neki artikli nemaju sifra_artikla u košarici.')
+          return
+        }
+
+        if (!datumIznajmljivanja.value || !datumVracanja.value) {
+          alert('Molimo odaberite datume iznajmljivanja i vraćanja.')
+          return
+        }
+        if (!odabirPlacanja.value) {
+          alert('Molimo odaberite način plaćanja.')
+          return
+        }
+
+        // 4) One-shot endpoint: narudzba + placanje + stavke + zalihe
+        const resp = await axios.post(
+          'http://localhost:3000/api/stavke-narudzbe',
           {
-            stavke: kosarica.value,
-            nacinPlacanja: odabirPlacanja.value,
+            stavke: stavkePayload,
+            nacinPlacanja: odabirPlacanja.value, // backend prima i snake i camel
             datumIznajmljivanja: datumIznajmljivanja.value,
             datumVracanja: datumVracanja.value,
-            lokacija: lokacijaNarudzbe.value,
             sifraLokacije: sifraLok.value,
-            ukupnaCijena: ukupnaCijena.value,
+            ukupnaCijena: Number(ukupnaCijenaZaPeriod.value),
           },
           { withCredentials: true },
         )
 
-        localStorage.removeItem('kosarica')
-        kosarica.value = []
-
-        if (nacin === 'Kartica') {
-          alert('Biti ćete preusmjereni na stranicu banke!')
+        if (resp.data?.success) {
+          localStorage.removeItem('kosarica')
+          kosarica.value = []
+          alert('Narudžba uspješno spremljena!')
           router.push('/dashboard')
-        } else if (nacin === 'Gotovina') {
-          alert('Naplata će se izvršiti na lokaciji!')
-          router.push('/dashboard')
+        } else {
+          alert('Nešto je pošlo po zlu pri spremanju narudžbe.')
         }
       } catch (err) {
         console.error(err)
-        alert('Greška pri slanju narudžbe')
+        const msg = err?.response?.data?.error || 'Greška pri slanju narudžbe'
+        alert(msg)
       }
     }
 
-    onMounted(() => {
-      loadKosarica()
-    })
+    onMounted(loadKosarica)
 
     return {
+      // state
       kosarica,
-      columns,
-      ukupnaCijena,
-      ukloniArtikl,
+      prikaziDatum,
       prikaziPlacanje,
       odabirPlacanja,
-      pokreniPlacanje,
-      minDatum,
       datumVracanja,
-      prikaziDatum,
       datumIznajmljivanja,
+
+      // table
+      columns,
+
+      // computed
+      minDatum,
+      brojDana,
+      ukupnaCijenaZaPeriod,
+
+      // methods
+      ukloniArtikl,
+      pokreniPlacanje,
     }
   },
 }
