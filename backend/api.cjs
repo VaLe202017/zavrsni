@@ -1154,3 +1154,87 @@ app.put('/api/cijena-narudzbe/:id', (req, res) => {
     }
   })
 })
+/*******************************************************************/
+// ucitavanje uplata
+app.get(
+  '/api/uplate',
+  /* isAdmin, */ (req, res) => {
+    const sql = `
+    SELECT
+      p.sifra_narudzbe,
+      p.nacin_placanja,
+      p.status_placanja,
+      n.ukupan_iznos,
+      n.datum_iznajmljivanja,
+      n.datum_vracanja,
+      k.ime_korisnika,
+      k.prezime_korisnika,
+      k.email_korisnika
+    FROM placanja p
+    JOIN narudzbe n ON n.sifra_narudzbe = p.sifra_narudzbe
+    JOIN korisnik k ON k.sifra_korisnika = n.sifra_korisnika
+    ORDER BY p.sifra_narudzbe DESC
+  `
+    connection.query(sql, (err, rows) => {
+      if (err) {
+        console.error('Greška dohvat uplata:', err)
+        return res.status(500).json({ error: 'Greška pri dohvaćanju uplata' })
+      }
+      res.json(rows)
+    })
+  },
+)
+/*******************************************************************/
+// dodavanje uplate
+app.post(
+  '/api/uplata',
+  /* isAdmin, */ (req, res) => {
+    const { sifra_narudzbe, nacin_placanja, status_placanja } = req.body
+    if (!sifra_narudzbe || !nacin_placanja) {
+      return res.status(400).json({ error: 'sifra_narudzbe i nacin_placanja su obavezni' })
+    }
+    const status = Number(status_placanja ? 1 : 0)
+
+    const qIns =
+      'INSERT INTO placanja (sifra_narudzbe, nacin_placanja, status_placanja) VALUES (?, ?)'
+    connection.query(qIns, [sifra_narudzbe, nacin_placanja, status], (e3) => {
+      if (e3) return res.status(500).json({ error: 'Greška pri dodavanju uplate' })
+      res.status(201).json({ success: true, upsert: 'inserted' })
+    })
+  },
+)
+/*******************************************************************/
+//azuriranje uplate
+app.put(
+  '/api/uplata/:sifraNar',
+  /* isAdmin, */ (req, res) => {
+    const sifraNar = Number(req.params.sifraNar)
+    const { nacin_placanja, status_placanja } = req.body
+    if (!Number.isFinite(sifraNar) || !nacin_placanja) {
+      return res.status(400).json({ error: 'Neispravan zahtjev' })
+    }
+    const sql = 'UPDATE placanja SET nacin_placanja = ?, status_placanja=? WHERE sifra_narudzbe = ?'
+    connection.query(sql, [nacin_placanja, status_placanja, sifraNar], (err, result) => {
+      if (err) return res.status(500).json({ error: 'Greška pri spremanju' })
+      if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
+      res.json({ success: true })
+    })
+  },
+)
+/*******************************************************************/
+//brisanje uplate
+app.delete(
+  '/api/uplata/:sifraNar',
+  /* isAdmin, */ (req, res) => {
+    const sifraNar = Number(req.params.sifraNar)
+    if (!Number.isFinite(sifraNar)) {
+      return res.status(400).json({ error: 'Neispravan ID' })
+    }
+    const sql = 'DELETE FROM placanja WHERE sifra_narudzbe = ?'
+    connection.query(sql, [sifraNar], (err, result) => {
+      if (err) return res.status(500).json({ error: 'Greška pri brisanju' })
+      if (result.affectedRows === 0) return res.status(404).json({ error: 'Uplata nije pronađena' })
+      res.json({ success: true })
+    })
+  },
+)

@@ -584,6 +584,7 @@ export default {
         )
         alert('Narudžba spremljena')
         await ucitajNarudzbe()
+        await azurirajCijenu()
       } catch (e) {
         console.error(e)
         alert('Greška pri spremanju narudžbe')
