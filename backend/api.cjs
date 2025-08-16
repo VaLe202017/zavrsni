@@ -45,12 +45,21 @@ connection.getConnection((err, connection) => {
 module.exports = connection
 /*******************************************************************/
 //provjera sesije
-app.get('/api/check', (req, res) => {
+/*app.get('/api/check', (req, res) => {
   if (req.session.korisnik) {
     res.json({ loggedIn: true, korisnik: req.session.user })
   } else {
     res.json({ loggedIn: false })
   }
+})*/
+app.get('/api/check', (req, res) => {
+  if (req.session.admin) {
+    return res.json({ loggedIn: true, role: 'admin', admin: req.session.admin })
+  }
+  if (req.session.korisnik) {
+    return res.json({ loggedIn: true, role: 'user', korisnik: req.session.korisnik })
+  }
+  res.json({ loggedIn: false })
 })
 /*******************************************************************/
 //api za login
@@ -541,7 +550,6 @@ app.delete('/api/lokacija/:id', (req, res) => {
 })
 /*******************************************************************/
 //dohvati narudzbe
-
 app.get('/api/narudzbe', (req, res) => {
   const sql = `
     SELECT
@@ -749,7 +757,8 @@ if (require.main === module) {
     console.log(`Server is running on port ${port}`)
   })
 }
-
+/*******************************************************************/
+//dodavanje inicijalnih stavki kroz kosaricu
 app.post('/api/stavke-narudzbe', (req, res) => {
   if (!req.session?.korisnik) {
     return res.status(401).json({ error: 'Niste prijavljeni' })
@@ -899,8 +908,212 @@ app.post('/api/stavke-narudzbe', (req, res) => {
     })
   })
 })
+/*******************************************************************/
+//dodavanje stavki kroz admin sucelje
+app.post('/api/stavke-narudzbe-dodaj', (req, res) => {
+  const { sifra_narudzbe, stavke } = req.body
 
-// (opcionalno) dohvat stavki za narudžbu
+  const narId = Number(sifra_narudzbe)
+  if (!Number.isFinite(narId)) {
+    return res.status(400).json({ error: 'Neispravan sifra_narudzbe' })
+  }
+  if (!Array.isArray(stavke) || stavke.length === 0) {
+    return res.status(400).json({ error: 'Pošalji stavke kao niz {sifra_artikla, kolicina}' })
+  }
+
+  const norm = stavke
+    .map((s) => ({
+      sifra_artikla: Number(s.sifra_artikla),
+      kolicina: Number(s.kolicina || 1),
+    }))
+    .filter((s) => Number.isFinite(s.sifra_artikla) && s.kolicina > 0)
+
+  if (norm.length === 0) {
+    return res.status(400).json({ error: 'Neispravne stavke (fali sifra_artikla/kolicina)' })
+  }
+
+  const kolicinePoArtiklu = new Map()
+  for (const s of norm) {
+    kolicinePoArtiklu.set(
+      s.sifra_artikla,
+      (kolicinePoArtiklu.get(s.sifra_artikla) || 0) + s.kolicina,
+    )
+  }
+  const artiklIds = Array.from(kolicinePoArtiklu.keys())
+
+  connection.getConnection((err, conn) => {
+    if (err) return res.status(500).json({ error: 'DB konekcija nije dostupna' })
+
+    const rollback = (e, msg = 'Greška pri dodavanju stavki') =>
+      conn.rollback(() => {
+        conn.release()
+        console.error('ROLLBACK /api/stavke-narudzbe-dodaj:', e)
+        res.status(500).json({ error: msg })
+      })
+
+    conn.beginTransaction((e1) => {
+      if (e1) {
+        conn.release()
+        return res.status(500).json({ error: 'Transakcija nije mogla krenuti' })
+      }
+
+      conn.query(
+        `SELECT datum_iznajmljivanja, datum_vracanja, ukupan_iznos
+         FROM narudzbe WHERE sifra_narudzbe = ? LIMIT 1`,
+        [narId],
+        (eNar, rNar) => {
+          if (eNar) return rollback(eNar, 'Greška pri provjeri narudžbe')
+          if (rNar.length === 0)
+            return rollback(new Error('Narudžba ne postoji'), 'Narudžba ne postoji')
+
+          const nar = rNar[0]
+          const start = new Date(nar.datum_iznajmljivanja)
+          const end = new Date(nar.datum_vracanja)
+          const diff = Math.round((end - start) / (1000 * 60 * 60 * 24))
+          const brojDana = Math.max(1, diff)
+
+          const sqlArt = `
+            SELECT sifra_artikla, dostupna_kolicina, cijena_dan
+            FROM artikli
+            WHERE sifra_artikla IN (${artiklIds.map(() => '?').join(',')})
+          `
+          conn.query(sqlArt, artiklIds, (eArt, rowsArt) => {
+            if (eArt) return rollback(eArt, 'Greška pri provjeri artikala')
+
+            const byId = new Map(rowsArt.map((r) => [r.sifra_artikla, r]))
+            for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+              const r = byId.get(aid)
+              if (!r)
+                return rollback(new Error(`Artikl ne postoji: ${aid}`), `Artikl ne postoji: ${aid}`)
+              if (Number(r.dostupna_kolicina) < Number(kol)) {
+                return rollback(
+                  new Error(`Nema zalihe za artikl ${aid}`),
+                  `Nema zalihe za artikl ${aid}`,
+                )
+              }
+            }
+
+            const rows = []
+            for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+              for (let i = 0; i < kol; i++) rows.push([narId, aid])
+            }
+
+            conn.query(
+              'INSERT INTO stavke_narudzbe (sifra_narudzbe, sifra_artikla) VALUES ?',
+              [rows],
+              (eIns) => {
+                if (eIns) return rollback(eIns, 'Greška pri spremanju stavki')
+
+                const updates = []
+                for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+                  updates.push(
+                    new Promise((resolve, reject) => {
+                      conn.query(
+                        'UPDATE artikli SET dostupna_kolicina = dostupna_kolicina - ? WHERE sifra_artikla = ?',
+                        [kol, aid],
+                        (eUpd) => (eUpd ? reject(eUpd) : resolve()),
+                      )
+                    }),
+                  )
+                }
+
+                Promise.all(updates)
+                  .then(() => {
+                    let dodatak = 0
+                    for (const [aid, kol] of kolicinePoArtiklu.entries()) {
+                      const cij = Number(byId.get(aid).cijena_dan || 0)
+                      dodatak += cij * kol
+                    }
+                    dodatak = dodatak * brojDana
+
+                    conn.query(
+                      'UPDATE narudzbe SET ukupan_iznos = ukupan_iznos + ? WHERE sifra_narudzbe = ?',
+                      [dodatak, narId],
+                      (eTot) => {
+                        if (eTot) return rollback(eTot, 'Greška pri ažuriranju iznosa')
+                        conn.commit((eC) => {
+                          if (eC) return rollback(eC)
+                          conn.release()
+                          res.status(201).json({
+                            success: true,
+                            sifra_narudzbe: narId,
+                            dodano_redaka: rows.length,
+                            dodatak_ukupan_iznos: dodatak,
+                          })
+                        })
+                      },
+                    )
+                  })
+                  .catch((eU) => rollback(eU, 'Greška pri ažuriranju zaliha'))
+              },
+            )
+          })
+        },
+      )
+    })
+  })
+})
+/*******************************************************************/
+//brisanje stavki krozu admin sucelje
+app.delete('/api/stavka-narudzbe/:id', (req, res) => {
+  const id = Number(req.params.id)
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Neispravan ID' })
+
+  connection.getConnection((err, conn) => {
+    if (err) return res.status(500).json({ error: 'DB konekcija nije dostupna' })
+
+    const rollback = (e, msg = 'Greška') =>
+      conn.rollback(() => {
+        conn.release()
+        res.status(500).json({ error: msg })
+      })
+
+    conn.beginTransaction((e1) => {
+      if (e1) {
+        conn.release()
+        return res.status(500).json({ error: 'Transakcija nije mogla krenuti' })
+      }
+
+      conn.query(
+        'SELECT sifra_artikla FROM stavke_narudzbe WHERE sifra_artikla_narudzbe = ?',
+        [id],
+        (eSel, rows) => {
+          if (eSel) return rollback(eSel, 'Greška pri čitanju stavke')
+          if (rows.length === 0) {
+            conn.rollback(() => {
+              conn.release()
+              return res.status(404).json({ error: 'Stavka ne postoji' })
+            })
+            return
+          }
+          const sifraArt = rows[0].sifra_artikla
+
+          conn.query(
+            'DELETE FROM stavke_narudzbe WHERE sifra_artikla_narudzbe = ?',
+            [id],
+            (eDel) => {
+              if (eDel) return rollback(eDel, 'Greška pri brisanju stavke')
+              conn.query(
+                'UPDATE artikli SET dostupna_kolicina = dostupna_kolicina + 1 WHERE sifra_artikla = ?',
+                [sifraArt],
+                (eUpd) => {
+                  if (eUpd) return rollback(eUpd, 'Greška pri vraćanju zalihe')
+                  conn.commit((eC) => {
+                    if (eC) return rollback(eC)
+                    conn.release()
+                    res.status(200).json({ success: true })
+                  })
+                },
+              )
+            },
+          )
+        },
+      )
+    })
+  })
+})
+/*******************************************************************/
+//ucitavanje stavki po narudzbi
 app.get('/api/stavke-narudzbe/:id', (req, res) => {
   const { id } = req.params
   const sql = `
@@ -917,5 +1130,27 @@ app.get('/api/stavke-narudzbe/:id', (req, res) => {
       return res.status(500).json({ error: 'Greška pri dohvaćanju stavki' })
     }
     res.status(200).json(rows)
+  })
+})
+/*******************************************************************/
+//azuriranje samo cijene
+app.put('/api/cijena-narudzbe/:id', (req, res) => {
+  const { id } = req.params
+  const { ukupan_iznos } = req.body
+
+  const sqlUpd = `
+    UPDATE narudzbe
+    SET
+      ukupan_iznos = ?
+    WHERE sifra_narudzbe = ?
+  `
+  connection.query(sqlUpd, [ukupan_iznos, id], (err, result) => {
+    if (err) {
+      console.error('Greška kod ažuriranja narudžbe:', err)
+      return res.status(500).json({ error: 'Greška kod ažuriranja narudžbe' })
+    }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Narudžba nije pronađena' })
+    }
   })
 })
