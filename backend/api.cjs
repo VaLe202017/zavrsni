@@ -116,7 +116,7 @@ app.get('/api/artikliSearch', (req, res) => {
 })
 /*******************************************************************/
 //unos narudzbe
-app.post('/api/narudzba', (req, res) => {
+app.post('/api/narudzbe', (req, res) => {
   // 1) Odredi korisnički ID
   let korisnikId = null
 
@@ -611,7 +611,7 @@ app.get('/api/narudzbe', (req, res) => {
 })
 /*******************************************************************/
 //dodavanje narudzbe
-app.post('/api/narudzba', isAdmin, (req, res) => {
+app.post('/api/narudzba', (req, res) => {
   const {
     sifra_korisnika,
     sifra_lokacije,
@@ -792,7 +792,7 @@ if (require.main === module) {
 }
 /*******************************************************************/
 //dodavanje inicijalnih stavki kroz kosaricu
-app.post('/api/narudzba/:id/stavke', isAdmin, (req, res) => {
+app.post('/api/narudzba/:id/stavke', (req, res) => {
   const sifra_narudzbe = Number(req.params.id)
   const stavkeRaw = req.body.stavke
 

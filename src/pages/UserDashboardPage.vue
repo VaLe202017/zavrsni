@@ -38,7 +38,7 @@ export default {
   name: 'AfterLogin',
   data() {
     const logout = async () => {
-      await axios.post('http://localhost:3000/api/logout')
+      await axios.post('http://localhost:3000/api/logout', {}, { withCredentials: true })
       window.location.href = '/'
     }
     return {

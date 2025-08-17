@@ -182,13 +182,11 @@ export default {
 
     const pokreniPlacanje = async () => {
       try {
-        // 1) provjera da su sve stavke s iste lokacije
+        // 0) validacije
         if (!lokacijaNarudzbe.value) {
           alert('Svi artikli u košarici moraju biti s iste lokacije.')
           return
         }
-
-        // 2) provjera login-a
         const userRes = await axios.get('http://localhost:3000/api/check', {
           withCredentials: true,
         })
@@ -197,17 +195,6 @@ export default {
           router.push('/main/login')
           return
         }
-
-        // 3) validacija stavki (mora postojati sifra_artikla)
-        const stavkePayload = kosarica.value.map((a) => ({
-          sifra_artikla: a.sifra_artikla, // OBAVEZNO da postoji u košarici
-          kolicina: Number(a.kolicina || 1),
-        }))
-        if (stavkePayload.some((s) => !Number.isFinite(s.sifra_artikla))) {
-          alert('Greška: neki artikli nemaju sifra_artikla u košarici.')
-          return
-        }
-
         if (!datumIznajmljivanja.value || !datumVracanja.value) {
           alert('Molimo odaberite datume iznajmljivanja i vraćanja.')
           return
@@ -217,27 +204,58 @@ export default {
           return
         }
 
-        // 4) One-shot endpoint: narudzba + placanje + stavke + zalihe
-        const resp = await axios.post(
-          'http://localhost:3000/api/stavke-narudzbe',
+        // 1) pripremi stavke
+        const stavkePayload = kosarica.value.map((a) => ({
+          sifra_artikla: Number(a.sifra_artikla),
+          kolicina: Number(a.kolicina || 1),
+        }))
+        if (stavkePayload.some((s) => !Number.isFinite(s.sifra_artikla))) {
+          alert('Greška: neki artikli nemaju sifra_artikla u košarici.')
+          return
+        }
+
+        // 2) KREIRAJ NARUDŽBU (vrati narudzbaId)
+        const respNar = await axios.post(
+          'http://localhost:3000/api/narudzbe',
           {
+            // backend ti trenutno traži i stavke u bodyju radi validacije “Košarica je prazna”
             stavke: stavkePayload,
-            nacinPlacanja: odabirPlacanja.value, // backend prima i snake i camel
+
+            // pošalji snake_case da sigurno pogodiš backend
+            nacin_placanja: odabirPlacanja.value,
             datumIznajmljivanja: datumIznajmljivanja.value,
             datumVracanja: datumVracanja.value,
             sifraLokacije: sifraLok.value,
+
+            // ovo će svakako biti ponovno izračunato nakon dodavanja stavki,
+            // ali pošaljemo informativno da prođe validacija ako je koristiš
             ukupnaCijena: Number(ukupnaCijenaZaPeriod.value),
           },
           { withCredentials: true },
         )
 
-        if (resp.data?.success) {
+        const narudzbaId = respNar.data?.narudzbaId || respNar.data?.sifra_narudzbe
+        if (!Number.isFinite(narudzbaId)) {
+          alert('Greška: nije vraćen ID narudžbe.')
+          return
+        }
+
+        // 3) DODAJ STAVKE U POSTOJEĆU NARUDŽBU
+        const respSt = await axios.post(
+          `http://localhost:3000/api/narudzba/${narudzbaId}/stavke`,
+          {
+            stavke: stavkePayload,
+          },
+          { withCredentials: true },
+        )
+
+        if (respSt.data?.success) {
           localStorage.removeItem('kosarica')
           kosarica.value = []
           alert('Narudžba uspješno spremljena!')
           router.push('/dashboard')
         } else {
-          alert('Nešto je pošlo po zlu pri spremanju narudžbe.')
+          alert('Nešto je pošlo po zlu pri spremanju stavki narudžbe.')
         }
       } catch (err) {
         console.error(err)
